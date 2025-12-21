@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- 新增：移动端适配 -->
+  <title>练习</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-white bg-white shadow-sm">
+    <div class="container">
+      <a class="navbar-brand">刷题系统</a>
+      <div><a class="btn btn-link" href="/dashboard">返回面板</a></div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <div class="row g-3">
+      <div class="col-lg-8">
+        <div id="card" class="card shadow-sm">
+          <div class="card-body">
+            <!-- 题目头部（左：多行标题；右：星标）-->
+            <div class="d-flex q-header">
+              <h5 id="qtitle">加载中...</h5>
+              <div class="star-wrap">
+                <button id="starBtn" class="btn btn-outline-secondary btn-sm">☆</button>
+              </div>
+            </div>
+
+            <div id="opts" class="mt-3"></div>
+
+            <!-- 底部控制行：单行显示 左侧提交+反馈，右侧上一/下一题 -->
+            <div class="mt-3 d-flex align-items-center justify-content-between gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <button id="submitBtn" class="btn btn-primary btn-sm" style="display:none;">提交</button>
+                <div id="feedback" class="fw-bold"></div>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button id="prevBtn" class="btn btn-light btn-sm">上一题</button>
+                <button id="nextBtn" class="btn btn-primary btn-sm">下一题</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h6>题目列表</h6>
+            <div id="list" class="uid-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
