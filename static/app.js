@@ -1,32 +1,25 @@
 let qlist = []; let pos = 0; let mode = null;
 let currentQuestion = null;
 let multiSelected = new Set();
-
-// 添加缺失的 toggleMultiOption 函数
-function toggleMultiOption(key){
-  if(multiSelected.has(key)) multiSelected.delete(key);
-  else multiSelected.add(key);
-  // 更新选项的视觉状态
-  const btn = document.getElementById('opt-'+key);
-  if(btn){
-    if(multiSelected.has(key)) btn.classList.add('selected');
-    else btn.classList.remove('selected');
-  }
-}
-
 let revealMode = false;
 let ud_cache = null; // 缓存用户数据
-let progressKey = null; // 新变量：后端返回的进度键或 ud.current_progress_key
+let progressKey = null; // 后端返回的进度键或 ud.current_progress_key
 let explainMode = false; // 是否显示解析
 
+// 新增：判断当前模式是否为特殊“无痕模式”（wrong/star/random:*）
+let isTagMode = false;
+// 新增：临时答题数据（仅用于 tag/random 模式，不保存到 ud_cache），结构：{ uid: { correct:..., selected:... } }
+let tempQA = {};
+// 新增：进入 quiz 时是否临时忽略历史作答（只在首次加载时生效）
+let ignoreHistoryOnEntry = false;
+// 新增：首次加载标志（进入 quiz 后的第一次 loadQuestion 为 true）
+let firstLoad = true;
+
 async function loadProgressList(){
-  // 先获取用户数据（包括 global、last_choice、progress）
   ud_cache = await fetch('/api/user/data').then(r=>r.json());
-  // 获取当前的 flags
   const flags = await fetch('/api/flags').then(r=>r.json());
   explainMode = !!flags.show_explanations;
   
-  // 优先使用后端记录的 current_progress_key
   progressKey = ud_cache.current_progress_key || null;
   const progObj = ud_cache.progress || {};
   if(!progressKey){
@@ -35,6 +28,10 @@ async function loadProgressList(){
       progressKey = keys[0];
     }
   }
+
+  // 将特殊“无痕模式”扩展为 wrong、star、random:*
+  isTagMode = Boolean(progressKey && (progressKey === 'wrong' || progressKey === 'star' || (typeof progressKey === 'string' && progressKey.startsWith('random:'))));
+
   if(progressKey && progObj[progressKey]){
     const prog = progObj[progressKey];
     qlist = prog.list || [];
@@ -46,11 +43,17 @@ async function loadProgressList(){
     revealMode = false;
   }
 
-  if(!qlist.length){
-    document.getElementById('qtitle').innerText = '无题目，请返回面板重新开始';
-    return;
+  // 特殊模式（tag/random/star）：在进入 quiz 的“首次加载”阶段临时忽略历史作答显示/禁答判定，
+  // 但不要破坏 ud_cache（只读不写），并且题目的标星状态仍从 ud_cache.global 读取用于展示。
+  if(isTagMode){
+    ignoreHistoryOnEntry = true;
+    firstLoad = true;
+    tempQA = {}; // 初始化临时答题库（仅用于临时保存本次会话答案）
+  } else {
+    ignoreHistoryOnEntry = false;
+    firstLoad = true;
   }
-  // 先渲染列表，这样可以恢复上次的选择和答案显示
+
   renderList();
   loadQuestion();
 }
@@ -64,14 +67,30 @@ function renderList(){
     el.innerText = uid;
     el.title = uid;
     el.onclick = ()=>{ pos = i; savePos(); loadQuestion(); };
-    // 根据 ud_cache 标注：last_choice / global.wrong / global.star
-    if(ud_cache){
-      const last = ud_cache.last_choice && ud_cache.last_choice[uid];
-      const gl = ud_cache.global || {wrong:[], star:[]};
-      if(last && last.correct) el.classList.add('green');
-      else if(last && !last.correct) el.classList.add('red');
-      if(gl.star && gl.star.includes(uid)) el.dataset.star = "1";
+
+    // 标星状态始终读取并展示（进入时就要显示题目的标星状态）
+    if(ud_cache && ud_cache.global && Array.isArray(ud_cache.global.star) && ud_cache.global.star.includes(uid)){
+      el.dataset.star = "1";
     }
+
+    // 历史答题标记逻辑：
+    // - 特殊模式（isTagMode）：使用 tempQA 判断本模式内是否已做（做过则标颜色），不使用全局 last_choice
+    // - 非特殊模式：正常使用 ud_cache.last_choice 显示历史
+    if(isTagMode){
+      const t = tempQA && tempQA[uid];
+      if(t){
+        if(t.correct) el.classList.add('green'); else el.classList.add('red');
+      }
+    } else {
+      if(!(ignoreHistoryOnEntry && firstLoad) && ud_cache){
+        const last = ud_cache.last_choice && ud_cache.last_choice[uid];
+        const gl = ud_cache.global || {wrong:[], star:[]};
+        if(last && last.correct) el.classList.add('green');
+        else if(last && !last.correct) el.classList.add('red');
+        if(gl.star && gl.star.includes(uid)) el.dataset.star = "1";
+      }
+    }
+
     if(i===pos) el.classList.add('active');
     container.appendChild(el);
   });
@@ -167,30 +186,38 @@ function adjustGridSize(){
 
 async function loadQuestion(){
   multiSelected.clear();
+  // 切换题目时不全局清空 tempQA，这样同一次进入模式里可保留临时答题结果
+
   const submitBtn = document.getElementById('submitBtn');
   if(submitBtn) submitBtn.style.display = 'none';
 
   if(pos>=qlist.length){ document.getElementById('qtitle').innerText='已完成'; return; }
   highlightList();
+
   const uid = qlist[pos];
   let q = await fetch('/api/question?uid='+encodeURIComponent(uid) + (revealMode ? '&reveal=1' : '')).then(r=>r.json());
   currentQuestion = q;
   document.getElementById('qtitle').innerText = (pos+1)+'. '+ q.question;
   const opts = document.getElementById('opts'); opts.innerHTML = '';
   document.getElementById('feedback').innerText = '';
-  
-  // 清除之前的解析显示
+
   const explainBox = document.getElementById('explanation-box');
   if(explainBox) explainBox.remove();
 
-  // 使用缓存 ud_cache 判定 star 与 last_choice
-  // 注意：错题练习（tag:wrong）和标星练习（tag:star）模式下，不读取 last_choice，始终允许答题
-  const isTagMode = progressKey && (progressKey.startsWith('tag:'));
-  const last = !isTagMode && ud_cache && ud_cache.last_choice ? ud_cache.last_choice[uid] : null;
+  // 读取历史作答来源：
+  // - 若处于特殊模式（isTagMode），只看 tempQA（本模式内做过则视为已作答）；外部做过（ud_cache.last_choice）不影响
+  // - 否则按之前逻辑（首次进入且忽略历史时视为无历史）
+  const rawLast = (ud_cache && ud_cache.last_choice) ? ud_cache.last_choice[uid] : null;
+  let last = null;
+  if(isTagMode){
+    last = (tempQA && tempQA[uid]) ? tempQA[uid] : null;
+  } else {
+    last = (ignoreHistoryOnEntry && firstLoad) ? null : rawLast;
+  }
+
   const gl = ud_cache && ud_cache.global ? ud_cache.global : {wrong:[], star:[]};
   setStarVisual(gl.star && gl.star.includes(uid));
 
-  // 如果没有公开答案，但存在上次答题记录或背题模式，主动拉取正确答案用于渲染
   if((revealMode || last) && (q.answer === undefined || q.answer === null)){
     try{
       const qWithAnswer = await fetch('/api/question?uid='+encodeURIComponent(uid)+'&reveal=1').then(r=>r.json());
@@ -203,8 +230,8 @@ async function loadQuestion(){
     }
   }
 
-  // 判断是否禁用交互：仅在背题模式时禁用；有上次记录时也允许答题但显示之前的选择
-  const shouldDisable = revealMode;
+  // 只要处于背题模式就禁用；否则若 last（来源按上面计算）存在也禁用
+  const shouldDisable = revealMode || !!last;
 
   if(q.type === '判断题'){
     for(const k of Object.keys(q.options)){
@@ -226,7 +253,6 @@ async function loadQuestion(){
       else { b.onclick = null; b.style.pointerEvents = 'none'; }
       opts.appendChild(b);
     }
-    // 多选题：只要不在背题模式就显示提交按钮
     if(submitBtn && !shouldDisable){ submitBtn.style.display = 'inline-block'; submitBtn.onclick = ()=>submitAnswerMulti(uid); }
     else if(submitBtn) submitBtn.style.display = 'none';
   } else {
@@ -241,7 +267,7 @@ async function loadQuestion(){
     if(submitBtn) submitBtn.style.display = 'none';
   }
 
-  // 显示答案与解析的逻辑
+  // 显示答案与解析
   if(q.answer !== undefined && q.answer !== null){
     const optsArr = document.querySelectorAll('#opts .option-btn');
     optsArr.forEach(btn=>{
@@ -250,7 +276,6 @@ async function loadQuestion(){
       btn.classList.remove('correct','wrong','selected');
       
       if(revealMode){
-        // 背题模式：直接显示正确答案（绿色），其他为红色
         if(Array.isArray(q.answer)){
           if(q.answer.includes(key)) btn.classList.add('correct');
           else btn.classList.add('wrong');
@@ -258,8 +283,7 @@ async function loadQuestion(){
           if(q.answer === key) btn.classList.add('correct');
           else btn.classList.add('wrong');
         }
-      } else if(last){
-        // 有上次答题记录：显示上次选择 + 对错标记
+      } else if(last && !isTagMode){
         if(Array.isArray(last.selected) && last.selected.includes(key)) btn.classList.add('selected');
         if(Array.isArray(q.answer)){
           if(q.answer.includes(key)) btn.classList.add('correct');
@@ -268,7 +292,6 @@ async function loadQuestion(){
           if(q.answer === key) btn.classList.add('correct');
           if(last.selected === key && last.selected !== q.answer) btn.classList.add('wrong');
         }
-        // 在多选题中同步 multiSelected
         if(q.type === '多选题' && Array.isArray(last.selected)){
           multiSelected.clear();
           last.selected.forEach(k=>multiSelected.add(k));
@@ -276,24 +299,27 @@ async function loadQuestion(){
       }
     });
 
-    // 更新方块颜色与反馈文字
-    const square = document.getElementById('li-'+pos);
-    if(square && (revealMode || last)){
-      square.classList.remove('green','red');
-      if(last){
-        if(last.correct) square.classList.add('green'); else square.classList.add('red');
+    // tag 模式：不更新方块颜色
+    if(!isTagMode){
+      const square = document.getElementById('li-'+pos);
+      if(square && (revealMode || last)){
+        square.classList.remove('green','red');
+        if(last){
+          if(last.correct) square.classList.add('green'); else square.classList.add('red');
+        }
       }
     }
 
-    // 显示反馈文字（仅在背题模式或有上次记录时）
-    if(revealMode){
-      // 背题模式：不显示反馈，仅显示解析
-    } else if(last){
-      document.getElementById('feedback').innerText = last.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
+    // tag 模式：不显示反馈；其他模式正常显示
+    if(!isTagMode){
+      if(revealMode){
+        // 背题模式：不显示反馈
+      } else if(last){
+        document.getElementById('feedback').innerText = last.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
+      }
     }
 
-    // 显示解析（仅在背题模式或 explainMode 打开且有答题记录时）
-    if((revealMode || (explainMode && last)) && q.explanation){
+    if((revealMode || (explainMode && last && !isTagMode)) && q.explanation){
       const feedbackDiv = document.getElementById('feedback');
       const explainDiv = document.createElement('div');
       explainDiv.id = 'explanation-box';
@@ -308,23 +334,41 @@ async function loadQuestion(){
     }
   }
 
+  // 在首次加载完成后，取消“首次忽略历史”状态，使后续题目恢复正常读取历史
+  if(ignoreHistoryOnEntry && firstLoad){
+    firstLoad = false;
+    // 我们只在进入时忽略一次，随后恢复正常读取历史
+    ignoreHistoryOnEntry = false;
+  }
+
   document.getElementById('starBtn').onclick = ()=>toggleStar(uid);
   document.getElementById('nextBtn').onclick = ()=>{ pos = Math.min(pos+1, qlist.length-1); savePos(); loadQuestion(); };
   document.getElementById('prevBtn').onclick = ()=>{ pos = Math.max(pos-1, 0); savePos(); loadQuestion(); };
 }
 
-// 禁用所有选项按钮，不允许重新作答
-function disableAllOptions(){
-  const optsArr = document.querySelectorAll('#opts .option-btn');
-  optsArr.forEach(btn=>{
-    btn.disabled = true;
-    btn.style.cursor = 'not-allowed';
-    btn.style.opacity = '0.7';
-  });
+function toggleMultiOption(key){
+  if(multiSelected.has(key)) multiSelected.delete(key);
+  else multiSelected.add(key);
+  const btn = document.getElementById('opt-'+key);
+  if(btn){
+    if(multiSelected.has(key)) btn.classList.add('selected');
+    else btn.classList.remove('selected');
+  }
 }
 
 async function submitAnswerSingle(uid, selected){
   if(!currentQuestion) return;
+  // 非特殊模式：若全局已有历史作答，禁止再次作答（防止绕过前端）
+  if(!isTagMode && ud_cache && ud_cache.last_choice && ud_cache.last_choice[uid]){
+    alert('该题已有历史作答记录，不能再次作答。');
+    return;
+  }
+  // 特殊模式：若本模式已在 tempQA 中存在记录，也禁止再次作答
+  if(isTagMode && tempQA && tempQA[uid]){
+    alert('该题在本模式中已作答，不能重复作答。');
+    return;
+  }
+
   const r = await fetch('/api/answer',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, selected})}).then(r=>r.json());
   const opts = document.querySelectorAll('#opts .option-btn');
   opts.forEach(btn=>{
@@ -339,7 +383,33 @@ async function submitAnswerSingle(uid, selected){
       if(key===selected && key!==r.answer) btn.classList.add('wrong');
     }
   });
-  // 更新本地缓存
+
+  // tag/random 模式：不要写入后端持久记录，仅记录到 tempQA，防止本模式内重复作答
+  if(isTagMode){
+    tempQA[uid] = {"correct": r.correct, "selected": selected};
+    // 显示解析（如启用）
+    if(explainMode && currentQuestion.explanation){
+      const feedbackDiv = document.getElementById('feedback');
+      const explainDiv = document.createElement('div');
+      explainDiv.id = 'explanation-box';
+      explainDiv.style.marginTop = '12px';
+      explainDiv.style.padding = '10px';
+      explainDiv.style.backgroundColor = '#f0f8ff';
+      explainDiv.style.borderLeft = '4px solid #0d6efd';
+      explainDiv.style.fontSize = '13px';
+      explainDiv.style.lineHeight = '1.5';
+      explainDiv.innerText = '💡 ' + currentQuestion.explanation;
+      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+    }
+    const optsArr = document.querySelectorAll('#opts .option-btn');
+    optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
+    // 在列表上标记该题已做（颜色）
+    const square = document.getElementById('li-'+pos);
+    if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
+    return;
+  }
+
+  // 非 tag 模式：正常保存数据
   ud_cache = ud_cache || {};
   ud_cache.last_choice = ud_cache.last_choice || {};
   ud_cache.last_choice[uid] = {"correct": r.correct, "selected": selected};
@@ -349,16 +419,13 @@ async function submitAnswerSingle(uid, selected){
   } else {
     const idx = ud_cache.global.wrong.indexOf(uid); if(idx>=0) ud_cache.global.wrong.splice(idx,1);
   }
-  // 更新方块颜色
   const square = document.getElementById('li-'+pos);
   if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
   document.getElementById('feedback').innerText = r.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + JSON.stringify(r.answer));
   
-  // 答题后禁用交互
   const optsArr = document.querySelectorAll('#opts .option-btn');
   optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
   
-  // 答题后显示解析（若启用且题目有解析）
   if(explainMode && currentQuestion.explanation){
     const feedbackDiv = document.getElementById('feedback');
     const explainDiv = document.createElement('div');
@@ -373,12 +440,22 @@ async function submitAnswerSingle(uid, selected){
     feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
   }
   
-  // 立即保存进度到后端
   await saveProgress();
 }
 
 async function submitAnswerMulti(uid){
   if(!currentQuestion) return;
+  // 安全保护：若非特殊模式且已有历史作答，禁止再次提交
+  if(!isTagMode && ud_cache && ud_cache.last_choice && ud_cache.last_choice[uid]){
+    alert('该题已有历史作答记录，不能再次作答。');
+    return;
+  }
+  // 特殊模式：若本模式已在 tempQA 中存在记录，也禁止再次作答
+  if(isTagMode && tempQA && tempQA[uid]){
+    alert('该题在本模式中已作答，不能重复作答。');
+    return;
+  }
+
   const selectedArr = Array.from(multiSelected);
   const r = await fetch('/api/answer',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, selected: selectedArr})}).then(r=>r.json());
   const correct = Array.isArray(r.answer) ? r.answer : (r.answer ? [r.answer] : []);
@@ -391,7 +468,30 @@ async function submitAnswerMulti(uid){
     if(correct.includes(key)) btn.classList.add('correct');
     if(selectedArr.includes(key) && !correct.includes(key)) btn.classList.add('wrong');
   });
-  // 更新本地缓存
+
+  if(isTagMode){
+    tempQA[uid] = {"correct": r.correct, "selected": selectedArr};
+    if(explainMode && currentQuestion.explanation){
+      const feedbackDiv = document.getElementById('feedback');
+      const explainDiv = document.createElement('div');
+      explainDiv.id = 'explanation-box';
+      explainDiv.style.marginTop = '12px';
+      explainDiv.style.padding = '10px';
+      explainDiv.style.backgroundColor = '#f0f8ff';
+      explainDiv.style.borderLeft = '4px solid #0d6efd';
+      explainDiv.style.fontSize = '13px';
+      explainDiv.style.lineHeight = '1.5';
+      explainDiv.innerText = '💡 ' + currentQuestion.explanation;
+      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+    }
+    const optsArr = document.querySelectorAll('#opts .option-btn');
+    optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
+    const square = document.getElementById('li-'+pos);
+    if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
+    return;
+  }
+
+  // 非 tag 模式：正常保存数据
   ud_cache = ud_cache || {};
   ud_cache.last_choice = ud_cache.last_choice || {};
   ud_cache.last_choice[uid] = {"correct": r.correct, "selected": selectedArr};
@@ -405,11 +505,9 @@ async function submitAnswerMulti(uid){
   if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
   document.getElementById('feedback').innerText = r.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + JSON.stringify(r.answer));
   
-  // 答题后禁用交互
   const optsArr = document.querySelectorAll('#opts .option-btn');
   optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
   
-  // 答题后显示解析（若启用且题目有解析）
   if(explainMode && currentQuestion.explanation){
     const feedbackDiv = document.getElementById('feedback');
     const explainDiv = document.createElement('div');
@@ -424,13 +522,13 @@ async function submitAnswerMulti(uid){
     feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
   }
   
-  // 立即保存进度到后端
   await saveProgress();
 }
 
 async function toggleStar(uid){
+  // 允许在所有模式下标星/取消标星（包括 wrong/star/random 模式）
   const r = await fetch('/api/star',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, action:'toggle'})}).then(r=>r.json());
-  // update cache global.star
+  // 更新本地缓存中的 global.star（用于即时 UI 反馈）
   ud_cache = ud_cache || {};
   ud_cache.global = ud_cache.global || {"wrong":[], "star":[]};
   if(r.starred){
@@ -439,7 +537,7 @@ async function toggleStar(uid){
     const idx = ud_cache.global.star.indexOf(uid); if(idx>=0) ud_cache.global.star.splice(idx,1);
   }
   setStarVisual(r.starred);
-  // 保存进度到后端
+  // 保存进度（保持现有行为）
   await saveProgress();
 }
 

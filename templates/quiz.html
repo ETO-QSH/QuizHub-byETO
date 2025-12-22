@@ -57,6 +57,139 @@
     </div>
   </div>
 
-<script src="/static/app.js"></script>
+  <script src="/static/app.js"></script>
+  <script>
+let currentList = [];
+let currentPos = 0;
+let currentKey = null;
+let revealMode = false;
+let showExplanations = false;
+
+async function loadFlags() {
+  const res = await fetch('/api/flags');
+  if (res.ok) {
+    const f = await res.json();
+    revealMode = !!f.reveal_mode;
+    showExplanations = !!f.show_explanations;
+  }
+}
+
+async function startPractice(mode, options = {}) {
+  // ...existing code 获取题目列表...
+  // 对于 random/wrong/star 模式，不请求服务器做题记录
+  // 直接本地管理 currentList 和 currentPos
+  
+  if (mode === 'random' || mode === 'wrong' || mode === 'star') {
+    // 这三个模式不向服务器请求，直接使用本地列表
+    currentPos = 0;
+    // currentList 已从 api/start 获取
+    displayQuestion(0);
+  } else {
+    // sequential 模式可继续使用服务器记录
+    displayQuestion(currentPos);
+  }
+}
+
+async function displayQuestion(index) {
+  if (index >= currentList.length) {
+    alert("题目已完成");
+    return;
+  }
+  
+  currentPos = index;
+  const uid = currentList[index];
+  const course = "{{ course }}";
+  
+  // reveal=1 仅在 revealMode 下传给服务器
+  const revealParam = revealMode ? 1 : 0;
+  const res = await fetch(`/api/question?uid=${uid}&reveal=${revealParam}&course=${course}`);
+  
+  if (!res.ok) {
+    alert("题目加载失败");
+    return;
+  }
+  
+  const q = await res.json();
+  
+  // 构建题目显示
+  let html = `<h4>${q.question}</h4>`;
+  html += `<div class="options">`;
+  
+  for (const [key, val] of Object.entries(q.options || {})) {
+    html += `<button onclick="submitAnswer('${uid}', '${key}')">${key}. ${val}</button>`;
+  }
+  
+  html += `</div>`;
+  
+  // revealMode 下显示答案和解析
+  if (revealMode) {
+    html += `<div class="answer-reveal"><strong>答案：${q.answer}</strong></div>`;
+    // 只要 showExplanations=true，就显示解析
+    if (showExplanations && q.explanation) {
+      html += `<div class="explanation"><strong>解析：</strong>${q.explanation}</div>`;
+    }
+  } else {
+    // 非 revealMode：仅在已做完题（收到答案反馈）且 showExplanations=true 时显示解析
+    // 此处先不显示，等用户提交答案后再决定
+  }
+  
+  document.getElementById("quiz-content").innerHTML = html;
+}
+
+async function submitAnswer(uid, selected) {
+  const course = "{{ course }}";
+  const res = await fetch('/api/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid, selected, course })
+  });
+  
+  if (!res.ok) return;
+  
+  const result = await res.json();
+  const correct = result.correct;
+  const answer = result.answer;
+  
+  // 显示答案反馈
+  let feedback = `<strong>${correct ? '✓ 正确' : '✗ 错误'}</strong><br>`;
+  feedback += `答案：${answer}`;
+  
+  // 在非 revealMode 下，如果 showExplanations=true，显示解析
+  if (!revealMode && showExplanations) {
+    const qRes = await fetch(`/api/question?uid=${uid}&reveal=1&course=${course}`);
+    if (qRes.ok) {
+      const q = await qRes.json();
+      if (q.explanation) {
+        feedback += `<br><strong>解析：</strong>${q.explanation}`;
+      }
+    }
+  }
+  
+  // 或者在原题目区域补充显示解析
+  const explanationDiv = document.querySelector(".explanation");
+  if (explanationDiv) {
+    explanationDiv.style.display = showExplanations ? "block" : "none";
+  }
+  
+  // 显示反馈并等待用户点击下一题
+  alert(feedback);
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (currentPos + 1 < currentList.length) {
+    displayQuestion(currentPos + 1);
+  } else {
+    alert("本单元题目已完成");
+  }
+}
+
+// 页面加载时
+window.onload = async () => {
+  await loadFlags();
+  // 从 session 或路由参数获取当前题目列表
+  // ...init logic...
+};
+</script>
 </body>
 </html>
