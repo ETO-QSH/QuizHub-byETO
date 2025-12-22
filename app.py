@@ -1,7 +1,12 @@
 from flask import Flask, render_template, request, redirect, session, jsonify
 from werkzeug.security import check_password_hash, generate_password_hash
 from pathlib import Path
-import json, random, re, sys, socket, webbrowser, threading, time
+import webbrowser
+import random
+import socket
+import json
+import sys
+import re
 
 if getattr(sys, 'frozen', False):
     RES_BASE = Path(sys._MEIPASS)
