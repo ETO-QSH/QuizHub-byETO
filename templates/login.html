@@ -43,22 +43,26 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
         </div>
         <div class="modal-body">
-          <p class="fw-bold mb-2">重要通知（请务必阅读）：</p>
+          <p class="fw-bold mb-2">请阅读以下内容：</p>
           <ul>
-            <li>本系统将于本周末维护，预计停机 2 小时。⏰</li>
-            <li>请提前保存未提交的答题记录，维护期间无法访问。💾</li>
-            <li>新功能上线：支持解析显示开关，详见 <a href="https://example.com" target="_blank" rel="noopener">更新说明</a>。🔗</li>
-            <li>如有问题，请联系管理员：<strong>admin@example.com</strong>。✉️</li>
+            <li>本工具完全免费，开源地址：<a href="https://github.com/ETO-QSH/QuizHub-byETO" target="_blank" rel="noopener">ETO-QSH/QuizHub-byETO</a></li>
+            <li>软件版本：<strong>v1.0.0</strong>，最后更新时间：<strong>2025/12/22</strong></li>
+            <li>如有问题，可以提交 <a href="https://github.com/ETO-QSH/QuizHub-byETO/issues" target="_blank" rel="noopener">issue</a>，或者直接线下单杀喵</li>
+            <li>如果需要更多题库支持，请<strong>自行拓展</strong>（我就考这两科呐）</li>
+            <li>请遵循<strong>GPLv3</strong>协议，完全开源，非商业化，保留署名和协议</li>
+            <li>账号和密码仅用于用户做题数据储存，丢失<strong>无法找回</strong></li>
+            <li><a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/%E6%AF%9B%E6%A6%82%20-%20%E8%AF%BE%E7%A8%8B%E7%9F%A5%E8%AF%86%E7%82%B9%E4%B8%8E%E8%AF%95%E9%A2%98%E5%BA%932025.docx" target="_blank" rel="noopener">毛概题库</a>来着学习通，<a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/%E6%96%B0-%E9%A9%AC%E5%8E%9F%E5%AE%A2%E8%A7%82%E9%A2%98%E9%A2%98%E5%BA%93%E4%BA%8C.pdf" target="_blank" rel="noopener">马原题库</a>来自于我们老师</li>
+            <li>所有解析均由<a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/gen_exp.py" target="_blank" rel="noopener"> AI </a>生成，无法保证准确性（答案取自题库）</li>
+            <li>由于可预见性的使用人数将超过我的承载能力，所以：</li>
+            <li><strong>强烈建议您将项目本地部署！！！</strong><a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/QuickStart.png" target="_blank" rel="noopener">『三十秒教程』</a></li>
+            <li>点击这个 <a href="https://github.com/ETO-QSH/QuizHub-byETO/releases" target="_blank" rel="noopener">链接</a> 下载最新软件（可以直接找别人要一份）</li>
+            <li>希望这个项目能帮助到你，我要先去想办法不挂了喵呜 ~</li>
           </ul>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 引入 Bootstrap JS 并自动触发模态（不会影响现有页面结构） -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     (function(){
@@ -66,9 +70,6 @@
         var m = document.getElementById('announceModal');
         if(!m) return;
         var modal = new bootstrap.Modal(m, {});
-        // 若只想首次显示一次，取消下面注释并使用 localStorage 控制：
-        // if(!localStorage.getItem('seen_announce_v1')){ modal.show(); localStorage.setItem('seen_announce_v1','1'); }
-        // 默认：每次加载登录页都弹出
         modal.show();
       });
     })();

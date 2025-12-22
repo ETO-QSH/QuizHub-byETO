@@ -3,16 +3,12 @@ let currentQuestion = null;
 let multiSelected = new Set();
 let revealMode = false;
 let ud_cache = null; // 缓存用户数据
-let progressKey = null; // 后端返回的进度键或 ud.current_progress_key
+let progressKey = null; // 后端返回的进度键
 let explainMode = false; // 是否显示解析
 
-// 新增：判断当前模式是否为特殊“无痕模式”（wrong/star/random:*）
 let isTagMode = false;
-// 新增：临时答题数据（仅用于 tag/random 模式，不保存到 ud_cache），结构：{ uid: { correct:..., selected:... } }
 let tempQA = {};
-// 新增：进入 quiz 时是否临时忽略历史作答（只在首次加载时生效）
 let ignoreHistoryOnEntry = false;
-// 新增：首次加载标志（进入 quiz 后的第一次 loadQuestion 为 true）
 let firstLoad = true;
 
 async function loadProgressList(){
@@ -29,7 +25,6 @@ async function loadProgressList(){
     }
   }
 
-  // 将特殊“无痕模式”扩展为 wrong、star、random:*
   isTagMode = Boolean(progressKey && (progressKey === 'wrong' || progressKey === 'star' || (typeof progressKey === 'string' && progressKey.startsWith('random:'))));
 
   if(progressKey && progObj[progressKey]){
@@ -48,7 +43,7 @@ async function loadProgressList(){
   if(isTagMode){
     ignoreHistoryOnEntry = true;
     firstLoad = true;
-    tempQA = {}; // 初始化临时答题库（仅用于临时保存本次会话答案）
+    tempQA = {};
   } else {
     ignoreHistoryOnEntry = false;
     firstLoad = true;
@@ -94,7 +89,7 @@ function renderList(){
     if(i===pos) el.classList.add('active');
     container.appendChild(el);
   });
-  adjustGridSize(); // 确保渲染后调整尺寸与卡片宽度
+  adjustGridSize();
 }
 
 function adjustGridSize(){
@@ -322,7 +317,19 @@ async function loadQuestion(){
     if((revealMode || (explainMode && last && !isTagMode)) && q.explanation){
       const feedbackDiv = document.getElementById('feedback');
       const explainDiv = document.createElement('div');
-      explainDiv.id = 'explanation-box';
+      
+      explainDiv.id = explainDiv.id || 'explanation-box';
+      explainDiv.style.display = 'block';
+      explainDiv.style.width = '100%';
+      explainDiv.style.boxSizing = 'border-box';
+      
+      const leftCol = feedbackDiv && feedbackDiv.parentElement;
+      const controlRow = leftCol && leftCol.parentElement;
+      if (controlRow && controlRow.parentElement) {
+        controlRow.parentElement.insertBefore(explainDiv, controlRow.nextSibling);
+      } else if (feedbackDiv && feedbackDiv.parentElement) {
+        feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+      }
       explainDiv.style.marginTop = '12px';
       explainDiv.style.padding = '10px';
       explainDiv.style.backgroundColor = '#f0f8ff';
@@ -330,7 +337,6 @@ async function loadQuestion(){
       explainDiv.style.fontSize = '13px';
       explainDiv.style.lineHeight = '1.5';
       explainDiv.innerText = '💡 ' + q.explanation;
-      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
     }
   }
 
@@ -391,7 +397,19 @@ async function submitAnswerSingle(uid, selected){
     if(explainMode && currentQuestion.explanation){
       const feedbackDiv = document.getElementById('feedback');
       const explainDiv = document.createElement('div');
-      explainDiv.id = 'explanation-box';
+      
+      explainDiv.id = explainDiv.id || 'explanation-box';
+      explainDiv.style.display = 'block';
+      explainDiv.style.width = '100%';
+      explainDiv.style.boxSizing = 'border-box';
+      
+      const leftCol = feedbackDiv && feedbackDiv.parentElement;
+      const controlRow = leftCol && leftCol.parentElement;
+      if (controlRow && controlRow.parentElement) {
+        controlRow.parentElement.insertBefore(explainDiv, controlRow.nextSibling);
+      } else if (feedbackDiv && feedbackDiv.parentElement) {
+        feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+      }
       explainDiv.style.marginTop = '12px';
       explainDiv.style.padding = '10px';
       explainDiv.style.backgroundColor = '#f0f8ff';
@@ -399,7 +417,6 @@ async function submitAnswerSingle(uid, selected){
       explainDiv.style.fontSize = '13px';
       explainDiv.style.lineHeight = '1.5';
       explainDiv.innerText = '💡 ' + currentQuestion.explanation;
-      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
     }
     const optsArr = document.querySelectorAll('#opts .option-btn');
     optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
@@ -429,7 +446,19 @@ async function submitAnswerSingle(uid, selected){
   if(explainMode && currentQuestion.explanation){
     const feedbackDiv = document.getElementById('feedback');
     const explainDiv = document.createElement('div');
-    explainDiv.id = 'explanation-box';
+    
+    explainDiv.id = explainDiv.id || 'explanation-box';
+    explainDiv.style.display = 'block';
+    explainDiv.style.width = '100%';
+    explainDiv.style.boxSizing = 'border-box';
+    
+    const leftCol = feedbackDiv && feedbackDiv.parentElement;
+    const controlRow = leftCol && leftCol.parentElement;
+    if (controlRow && controlRow.parentElement) {
+      controlRow.parentElement.insertBefore(explainDiv, controlRow.nextSibling);
+    } else if (feedbackDiv && feedbackDiv.parentElement) {
+      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+    }
     explainDiv.style.marginTop = '12px';
     explainDiv.style.padding = '10px';
     explainDiv.style.backgroundColor = '#f0f8ff';
@@ -437,7 +466,6 @@ async function submitAnswerSingle(uid, selected){
     explainDiv.style.fontSize = '13px';
     explainDiv.style.lineHeight = '1.5';
     explainDiv.innerText = '💡 ' + currentQuestion.explanation;
-    feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
   }
   
   await saveProgress();
@@ -474,7 +502,19 @@ async function submitAnswerMulti(uid){
     if(explainMode && currentQuestion.explanation){
       const feedbackDiv = document.getElementById('feedback');
       const explainDiv = document.createElement('div');
-      explainDiv.id = 'explanation-box';
+      
+      explainDiv.id = explainDiv.id || 'explanation-box';
+      explainDiv.style.display = 'block';
+      explainDiv.style.width = '100%';
+      explainDiv.style.boxSizing = 'border-box';
+
+      const leftCol = feedbackDiv && feedbackDiv.parentElement;
+      const controlRow = leftCol && leftCol.parentElement;
+      if (controlRow && controlRow.parentElement) {
+        controlRow.parentElement.insertBefore(explainDiv, controlRow.nextSibling);
+      } else if (feedbackDiv && feedbackDiv.parentElement) {
+        feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+      }
       explainDiv.style.marginTop = '12px';
       explainDiv.style.padding = '10px';
       explainDiv.style.backgroundColor = '#f0f8ff';
@@ -482,7 +522,6 @@ async function submitAnswerMulti(uid){
       explainDiv.style.fontSize = '13px';
       explainDiv.style.lineHeight = '1.5';
       explainDiv.innerText = '💡 ' + currentQuestion.explanation;
-      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
     }
     const optsArr = document.querySelectorAll('#opts .option-btn');
     optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
@@ -511,7 +550,19 @@ async function submitAnswerMulti(uid){
   if(explainMode && currentQuestion.explanation){
     const feedbackDiv = document.getElementById('feedback');
     const explainDiv = document.createElement('div');
-    explainDiv.id = 'explanation-box';
+    
+    explainDiv.id = explainDiv.id || 'explanation-box';
+    explainDiv.style.display = 'block';
+    explainDiv.style.width = '100%';
+    explainDiv.style.boxSizing = 'border-box';
+    
+    const leftCol = feedbackDiv && feedbackDiv.parentElement;
+    const controlRow = leftCol && leftCol.parentElement;
+    if (controlRow && controlRow.parentElement) {
+      controlRow.parentElement.insertBefore(explainDiv, controlRow.nextSibling);
+    } else if (feedbackDiv && feedbackDiv.parentElement) {
+      feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
+    }
     explainDiv.style.marginTop = '12px';
     explainDiv.style.padding = '10px';
     explainDiv.style.backgroundColor = '#f0f8ff';
@@ -519,7 +570,6 @@ async function submitAnswerMulti(uid){
     explainDiv.style.fontSize = '13px';
     explainDiv.style.lineHeight = '1.5';
     explainDiv.innerText = '💡 ' + currentQuestion.explanation;
-    feedbackDiv.parentElement.insertBefore(explainDiv, feedbackDiv.nextSibling);
   }
   
   await saveProgress();

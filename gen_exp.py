@@ -3,7 +3,7 @@ import requests
 from pathlib import Path
 import time
 
-DEEPSEEK_API_KEY = "sk-xxxxxx"
+DEEPSEEK_API_KEY = "sk-bf509eaac0804066b424825b40647e70"
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 
 BASE = Path(__file__).parent

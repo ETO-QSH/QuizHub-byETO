@@ -1,15 +1,24 @@
 from flask import Flask, render_template, request, redirect, session, jsonify
 from werkzeug.security import check_password_hash, generate_password_hash
 from pathlib import Path
-import json, random, re
+import json, random, re, sys, socket, webbrowser, threading, time
 
-APP = Flask(__name__, static_folder="static", template_folder="templates")
+if getattr(sys, 'frozen', False):
+    RES_BASE = Path(sys._MEIPASS)
+else:
+    RES_BASE = Path(__file__).parent
+
+APP = Flask(__name__, static_folder=str(RES_BASE / "static"), template_folder=str(RES_BASE / "templates"))
 APP.secret_key = "change-me-to-a-secure-random-key"
 USERNAME_RE = re.compile(r'^[A-Za-z0-9]+$')
 
-BASE = Path(__file__).parent
-USERS_FILE = BASE / "users.json"
-USER_DATA_DIR = BASE / "user_data"
+if getattr(sys, 'frozen', False):
+    APP_DIR = Path(sys.executable).parent
+else:
+    APP_DIR = Path(__file__).parent
+
+USERS_FILE = APP_DIR / "users.json"
+USER_DATA_DIR = APP_DIR / "user_data"
 USER_DATA_DIR.mkdir(exist_ok=True)
 
 if not USERS_FILE.exists():
@@ -17,11 +26,11 @@ if not USERS_FILE.exists():
 with USERS_FILE.open(encoding='utf-8') as f:
     USERS_DATA = json.load(f)
 
-DB_FILE = BASE / "database.json"
+DB_FILE = RES_BASE / "database.json"
 with DB_FILE.open(encoding='utf-8') as f:
     db = json.load(f)
 
-SECOND_DB_FILE = BASE / "dataset.json"
+SECOND_DB_FILE = RES_BASE / "dataset.json"
 with SECOND_DB_FILE.open(encoding='utf-8') as f:
     db2 = json.load(f)
 
@@ -74,7 +83,7 @@ for kind, groups in db2.items():
                 QUESTIONS2[uid] = {
                     "uid": uid,
                     "question": q.get("question"),
-                    "options": {"A": "正确", "B": "错误"},
+                    "options": {"√": "正确", "×": "错误"},
                     "answer": q.get("answer"),
                     "unit": unit_name,
                     "type": "判断题"
@@ -82,12 +91,12 @@ for kind, groups in db2.items():
                 uids.append(uid)
             UNIT_LIST2.setdefault(unit_name, []).extend(uids)
 
-EXP_DB = BASE / "exp_db.json"
+EXP_DB = RES_BASE / "exp_db.json"
 if EXP_DB.exists():
     with EXP_DB.open(encoding='utf-8') as f:
         EXPS_DB = json.load(f)
         
-EXP_DS = BASE / "exp_ds.json"
+EXP_DS = RES_BASE / "exp_ds.json"
 if EXP_DS.exists():
     with EXP_DS.open(encoding='utf-8') as f:
         EXPS_DS = json.load(f)
@@ -495,7 +504,6 @@ def api_question():
 
     if reveal:
         out["answer"] = q.get("answer")
-    # 根据 course 使用对应的解析库（maogai -> EXPS_DB, mayuan -> EXPS_DS）
     exps = EXPS_DS if course == "mayuan" else EXPS_DB
     if exps and uid in exps:
         out["explanation"] = exps[uid]
@@ -605,14 +613,15 @@ def api_clear_unit():
     username = session['user']
     ud_all, ud = get_user_section(username, course)
     if unit_key and unit_key in ud.get("by_unit", {}):
-        ud["by_unit"][unit_key]["studied"] = []
-        ud["by_unit"][unit_key]["wrong"] = []
-        ud["by_unit"][unit_key]["star"] = []
-        ud["by_unit"][unit_key]["last_pos"] = {"studied": 0, "wrong": 0, "star": 0}
-        lc = ud.get("last_choice", {})
-        to_del = [k for k in lc.keys() if isinstance(k, str) and k.startswith(tuple([u + "-" for u in ulist]))]
-        for k in to_del:
-            lc.pop(k, None)
+        ud_unit = ud["by_unit"].setdefault(unit_key, {"studied": [], "wrong": [], "star": [], "last_pos": {"studied": 0, "wrong": 0, "star": 0}})
+        ud_unit["studied"] = []
+        ud_unit["wrong"] = []
+        ud_unit["star"] = []
+        ud_unit["last_pos"] = {"studied": 0, "wrong": 0, "star": 0}
+        lc = ud.get("last_choice", {}) or {}
+        for uid in ulist:
+            if uid in lc:
+                lc.pop(uid, None)
         ud["last_choice"] = lc
         save_user_data(username, ud_all)
         return jsonify({"ok": True})
@@ -670,4 +679,22 @@ def api_user_data():
 
 
 if __name__ == "__main__":
-    APP.run(host="0.0.0.0", debug=True, port=5000)
+    port = 5000
+    host = "0.0.0.0"
+
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except Exception:
+            print(f"无效端口参数 {sys.argv[1]}，使用默认端口 {port}")
+    
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "127.0.0.1"
+
+    webbrowser.open(f"http://{local_ip}:{port}/")
+    APP.run(host=host, port=port)
