@@ -7,9 +7,10 @@ let progressKey = null; // 后端返回的进度键
 let explainMode = false; // 是否显示解析
 
 let isTagMode = false;
-let tempQA = {};
 let ignoreHistoryOnEntry = false;
 let firstLoad = true;
+// 新增：tag 模式下会复制 qlist 到本地集合，进入时可作答，作答后从集合移除
+let tagAvailable = null;
 
 async function loadProgressList(){
   ud_cache = await fetch('/api/user/data').then(r=>r.json());
@@ -38,15 +39,17 @@ async function loadProgressList(){
     revealMode = false;
   }
 
-  // 特殊模式（tag/random/star）：在进入 quiz 的“首次加载”阶段临时忽略历史作答显示/禁答判定，
-  // 但不要破坏 ud_cache（只读不写），并且题目的标星状态仍从 ud_cache.global 读取用于展示。
+  // 特殊模式（tag/random/star）：仅在进入时临时忽略历史作答显示/禁答判定，
+  // 不再使用 tempQA，后续行为与普通模式一致（会读取/保存 ud_cache）。
   if(isTagMode){
     ignoreHistoryOnEntry = true;
     firstLoad = true;
-    tempQA = {};
+    // 复制一份题目集合到本地，进入时这些题目都可作答（只在本次进入会话有效）
+    tagAvailable = new Set(qlist);
   } else {
     ignoreHistoryOnEntry = false;
     firstLoad = true;
+    tagAvailable = null;
   }
 
   renderList();
@@ -69,21 +72,14 @@ function renderList(){
     }
 
     // 历史答题标记逻辑：
-    // - 特殊模式（isTagMode）：使用 tempQA 判断本模式内是否已做（做过则标颜色），不使用全局 last_choice
-    // - 非特殊模式：正常使用 ud_cache.last_choice 显示历史
-    if(isTagMode){
-      const t = tempQA && tempQA[uid];
-      if(t){
-        if(t.correct) el.classList.add('green'); else el.classList.add('red');
-      }
-    } else {
-      if(!(ignoreHistoryOnEntry && firstLoad) && ud_cache){
-        const last = ud_cache.last_choice && ud_cache.last_choice[uid];
-        const gl = ud_cache.global || {wrong:[], star:[]};
-        if(last && last.correct) el.classList.add('green');
-        else if(last && !last.correct) el.classList.add('red');
-        if(gl.star && gl.star.includes(uid)) el.dataset.star = "1";
-      }
+    // - 如果处于 tag 模式并且题目仍在 tagAvailable 中，则视为「未作答」不显示历史颜色
+    // - 否则按原逻辑从 ud_cache.last_choice 显示历史（首次进入且忽略历史时视为无历史）
+    if(ud_cache && !(isTagMode && tagAvailable && tagAvailable.has(uid)) && !(ignoreHistoryOnEntry && firstLoad)){
+      const last = ud_cache.last_choice && ud_cache.last_choice[uid];
+      const gl = ud_cache.global || {wrong:[], star:[]};
+      if(last && last.correct) el.classList.add('green');
+      else if(last && !last.correct) el.classList.add('red');
+      if(gl.star && gl.star.includes(uid)) el.dataset.star = "1";
     }
 
     if(i===pos) el.classList.add('active');
@@ -181,7 +177,6 @@ function adjustGridSize(){
 
 async function loadQuestion(){
   multiSelected.clear();
-  // 切换题目时不全局清空 tempQA，这样同一次进入模式里可保留临时答题结果
 
   const submitBtn = document.getElementById('submitBtn');
   if(submitBtn) submitBtn.style.display = 'none';
@@ -199,16 +194,11 @@ async function loadQuestion(){
   const explainBox = document.getElementById('explanation-box');
   if(explainBox) explainBox.remove();
 
-  // 读取历史作答来源：
-  // - 若处于特殊模式（isTagMode），只看 tempQA（本模式内做过则视为已作答）；外部做过（ud_cache.last_choice）不影响
-  // - 否则按之前逻辑（首次进入且忽略历史时视为无历史）
+  // 读取历史作答来源：统一从 ud_cache.last_choice 读取，
+  // 但在首次进入且 ignoreHistoryOnEntry 时视为无历史
   const rawLast = (ud_cache && ud_cache.last_choice) ? ud_cache.last_choice[uid] : null;
-  let last = null;
-  if(isTagMode){
-    last = (tempQA && tempQA[uid]) ? tempQA[uid] : null;
-  } else {
-    last = (ignoreHistoryOnEntry && firstLoad) ? null : rawLast;
-  }
+  // 如果是 tag 模式且题目在本地集合内，视为无历史（可作答）
+  let last = (isTagMode && tagAvailable && tagAvailable.has(uid)) ? null : ((ignoreHistoryOnEntry && firstLoad) ? null : rawLast);
 
   const gl = ud_cache && ud_cache.global ? ud_cache.global : {wrong:[], star:[]};
   setStarVisual(gl.star && gl.star.includes(uid));
@@ -225,8 +215,9 @@ async function loadQuestion(){
     }
   }
 
-  // 只要处于背题模式就禁用；否则若 last（来源按上面计算）存在也禁用
-  const shouldDisable = revealMode || !!last;
+  // 只要处于背题模式就禁用；否则若 last 存在也禁用。
+  // 若处于 tag 模式且题目在 tagAvailable，则不禁用（即使 ud_cache 有历史也允许作答）
+  const shouldDisable = revealMode || (!!last && !(isTagMode && tagAvailable && tagAvailable.has(uid)));
 
   if(q.type === '判断题'){
     for(const k of Object.keys(q.options)){
@@ -278,7 +269,7 @@ async function loadQuestion(){
           if(q.answer === key) btn.classList.add('correct');
           else btn.classList.add('wrong');
         }
-      } else if(last && !isTagMode){
+      } else if(last){
         if(Array.isArray(last.selected) && last.selected.includes(key)) btn.classList.add('selected');
         if(Array.isArray(q.answer)){
           if(q.answer.includes(key)) btn.classList.add('correct');
@@ -294,28 +285,22 @@ async function loadQuestion(){
       }
     });
 
-    // tag 模式：不更新方块颜色
-    if(!isTagMode){
-      const square = document.getElementById('li-'+pos);
-      if(square && (revealMode || last)){
-        square.classList.remove('green','red');
-        if(last){
-          if(last.correct) square.classList.add('green'); else square.classList.add('red');
-        }
+    // 列表方块：统一更新（tag 模式也更新）
+    const square = document.getElementById('li-'+pos);
+    if(square && (revealMode || last)){
+      square.classList.remove('green','red');
+      if(last){
+        if(last.correct) square.classList.add('green'); else square.classList.add('red');
       }
     }
 
-    // tag 模式：不显示反馈；其他模式正常显示
-    if(!isTagMode){
-      if(revealMode){
-        // 背题模式：不显示反馈（保持原逻辑）
-      } else if(last){
-        document.getElementById('feedback').innerText = last.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
-      }
+    // 统一显示反馈（tag 模式也可显示解析）
+    if(!revealMode && last){
+      document.getElementById('feedback').innerText = last.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
     }
 
-    // 仅当“显示解析”开启时并且不是 tag 模式才展示解析（背题模式不再强制开启解析）
-    if(explainMode && q.explanation && !isTagMode){
+    // 只要启用了解析就展示（tag 模式也可显示解析）
+    if(explainMode && q.explanation){
       insertExplanation(q.explanation);
     }
   }
@@ -323,7 +308,6 @@ async function loadQuestion(){
   // 在首次加载完成后，取消“首次忽略历史”状态，使后续题目恢复正常读取历史
   if(ignoreHistoryOnEntry && firstLoad){
     firstLoad = false;
-    // 我们只在进入时忽略一次，随后恢复正常读取历史
     ignoreHistoryOnEntry = false;
   }
 
@@ -344,15 +328,18 @@ function toggleMultiOption(key){
 
 async function submitAnswerSingle(uid, selected){
   if(!currentQuestion) return;
-  // 非特殊模式：若全局已有历史作答，禁止再次作答（防止绕过前端）
-  if(!isTagMode && ud_cache && ud_cache.last_choice && ud_cache.last_choice[uid]){
-    alert('该题已有历史作答记录，不能再次作答。');
-    return;
-  }
-  // 特殊模式：若本模式已在 tempQA 中存在记录，也禁止再次作答
-  if(isTagMode && tempQA && tempQA[uid]){
-    alert('该题在本模式中已作答，不能重复作答。');
-    return;
+  // 非 tag 模式：若全局已有历史作答，禁止再次作答
+  // tag 模式：仅当题目仍在 tagAvailable 时允许作答；否则禁止重复作答
+  if(!isTagMode){
+    if(ud_cache && ud_cache.last_choice && ud_cache.last_choice[uid]){
+      alert('该题已有历史作答记录，不能再次作答。');
+      return;
+    }
+  } else {
+    if(!(tagAvailable && tagAvailable.has(uid))){
+      alert('该题在本模式中已作答或不可重复作答。');
+      return;
+    }
   }
 
   const r = await fetch('/api/answer',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({uid, selected})}).then(r=>r.json());
@@ -370,29 +357,7 @@ async function submitAnswerSingle(uid, selected){
     }
   });
 
-  // tag/random 模式：不要写入后端持久记录，仅记录到 tempQA，防止本模式内重复作答
-  if(isTagMode){
-    tempQA[uid] = {"correct": r.correct, "selected": selected};
-
-    // 在特殊模式下也显示“答案”（不是解析）
-    const fb = document.getElementById('feedback');
-    if(fb){
-      fb.innerText = r.correct ? '✓ 回答正确' : ('✗ 回答错误，答案: ' + (Array.isArray(r.answer) ? JSON.stringify(r.answer) : r.answer));
-    }
-    
-    // 显示解析（如启用）
-    if(explainMode && currentQuestion.explanation){
-      insertExplanation(currentQuestion.explanation);
-    }
-    const optsArr = document.querySelectorAll('#opts .option-btn');
-    optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
-    // 在列表上标记该题已做（颜色）
-    const square = document.getElementById('li-'+pos);
-    if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
-    return;
-  }
-
-  // 非 tag 模式：正常保存数据
+  // 正常保存数据到 ud_cache 并更新 UI（tag 模式也保存到 ud_cache，本地会移除 tagAvailable）
   ud_cache = ud_cache || {};
   ud_cache.last_choice = ud_cache.last_choice || {};
   ud_cache.last_choice[uid] = {"correct": r.correct, "selected": selected};
@@ -402,6 +367,12 @@ async function submitAnswerSingle(uid, selected){
   } else {
     const idx = ud_cache.global.wrong.indexOf(uid); if(idx>=0) ud_cache.global.wrong.splice(idx,1);
   }
+
+  // 若处于 tag 模式，移除该题目使其在本次会话中视为已作答
+  if(isTagMode && tagAvailable){
+    tagAvailable.delete(uid);
+  }
+
   const square = document.getElementById('li-'+pos);
   if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
   document.getElementById('feedback').innerText = r.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + JSON.stringify(r.answer));
@@ -412,21 +383,25 @@ async function submitAnswerSingle(uid, selected){
   if(explainMode && currentQuestion.explanation){
     insertExplanation(currentQuestion.explanation);
   }
+
+  // 刷新左侧列表显示（使被移除的题目显示为已作答）
+  renderList();
   
   await saveProgress();
 }
 
 async function submitAnswerMulti(uid){
   if(!currentQuestion) return;
-  // 安全保护：若非特殊模式且已有历史作答，禁止再次提交
-  if(!isTagMode && ud_cache && ud_cache.last_choice && ud_cache.last_choice[uid]){
-    alert('该题已有历史作答记录，不能再次作答。');
-    return;
-  }
-  // 特殊模式：若本模式已在 tempQA 中存在记录，也禁止再次作答
-  if(isTagMode && tempQA && tempQA[uid]){
-    alert('该题在本模式中已作答，不能重复作答。');
-    return;
+  if(!isTagMode){
+    if(ud_cache && ud_cache.last_choice && ud_cache.last_choice[uid]){
+      alert('该题已有历史作答记录，不能再次作答。');
+      return;
+    }
+  } else {
+    if(!(tagAvailable && tagAvailable.has(uid))){
+      alert('该题在本模式中已作答或不可重复作答。');
+      return;
+    }
   }
 
   const selectedArr = Array.from(multiSelected);
@@ -442,26 +417,7 @@ async function submitAnswerMulti(uid){
     if(selectedArr.includes(key) && !correct.includes(key)) btn.classList.add('wrong');
   });
 
-  if(isTagMode){
-    tempQA[uid] = {"correct": r.correct, "selected": selectedArr};
-
-    // 在特殊模式下也显示“答案”（不是解析）
-    const fb = document.getElementById('feedback');
-    if(fb){
-      fb.innerText = r.correct ? '✓ 回答正确' : ('✗ 回答错误，答案: ' + (Array.isArray(r.answer) ? JSON.stringify(r.answer) : r.answer));
-    }
-    
-    if(explainMode && currentQuestion.explanation){
-      insertExplanation(currentQuestion.explanation);
-    }
-    const optsArr = document.querySelectorAll('#opts .option-btn');
-    optsArr.forEach(btn=>{ btn.onclick = null; btn.style.pointerEvents = 'none'; });
-    const square = document.getElementById('li-'+pos);
-    if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
-    return;
-  }
-
-  // 非 tag 模式：正常保存数据
+  // 正常保存数据到 ud_cache 并更新 UI（tag 模式也保存到 ud_cache，本地会移除 tagAvailable）
   ud_cache = ud_cache || {};
   ud_cache.last_choice = ud_cache.last_choice || {};
   ud_cache.last_choice[uid] = {"correct": r.correct, "selected": selectedArr};
@@ -471,6 +427,11 @@ async function submitAnswerMulti(uid){
   } else {
     const idx = ud_cache.global.wrong.indexOf(uid); if(idx>=0) ud_cache.global.wrong.splice(idx,1);
   }
+
+  if(isTagMode && tagAvailable){
+    tagAvailable.delete(uid);
+  }
+
   const square = document.getElementById('li-'+pos);
   if(square){ square.classList.remove('green','red'); if(r.correct) square.classList.add('green'); else square.classList.add('red'); }
   document.getElementById('feedback').innerText = r.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + JSON.stringify(r.answer));
@@ -481,6 +442,9 @@ async function submitAnswerMulti(uid){
   if(explainMode && currentQuestion.explanation){
     insertExplanation(currentQuestion.explanation);
   }
+
+  // 刷新列表
+  renderList();
   
   await saveProgress();
 }
