@@ -138,10 +138,6 @@ function adjustGridSize(){
   if(single > cssMax) single = cssMax;
   if(single < 16) single = 16;
 
-  // 固定每列像素宽，保证方块大小不随容器变化
-  grid.style.gridTemplateColumns = `repeat(${cols}, ${single}px)`;
-  grid.style.gridAutoRows = single + 'px';
-
   // 留白不改变方块尺寸，但扩大容器视觉宽度（不超出 availableWidth）
   const extraPad = Math.floor(single * 1.0);
   let targetGridWidth = gridWidth + extraPad * 2;
