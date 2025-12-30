@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>登录</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/style.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center" style="height:100vh;">
+  <div class="card shadow-sm" style="min-width:360px;">
+    <div class="card-body">
+      <div class="card-title mb-3 text-center">
+        <div style="font-size:1.6rem; font-weight:700; line-height:1.1;">『毛概 & 马原』</div>
+        <div style="font-size:0.95rem; color:var(--bs-gray-600); margin-top:4px;">客观题库刷题系统 - byETO</div>
+      </div>
+      {% if error %}<div class="alert alert-danger">{{error}}</div>{% endif %}
+      <form method="post" class="mx-auto" style="max-width:360px;">
+        <div class="mb-3">
+          <label for="username" class="form-label">用户名</label>
+          <input id="username" name="username" class="form-control" required pattern="[A-Za-z0-9]+" />
+        </div>
+
+        <div class="mb-3">
+          <label for="password" class="form-label">密码</label>
+          <input id="password" name="password" type="password" class="form-control" required pattern="[A-Za-z0-9]+" />
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" name="course" value="maogai" class="btn btn-primary flex-fill">毛概刷题</button>
+          <button type="submit" name="course" value="mayuan" class="btn btn-secondary flex-fill">马原刷题</button>
+        </div>
+      </form>
+      <hr>
+      <div class="small text-muted">用户名和密码仅允许字母和数字。首次使用会自动注册并登录；若用户名已存在但密码错误，会提示。</div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="announceModal" tabindex="-1" aria-labelledby="announceTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="announceTitle" class="modal-title w-100 text-center" role="heading" aria-level="1">公告</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+        </div>
+        <div class="modal-body">
+          <p class="fw-bold mb-2">请阅读以下内容：</p>
+          <ul>
+            <li>本工具完全免费，开源地址：<a href="https://github.com/ETO-QSH/QuizHub-byETO" target="_blank" rel="noopener">ETO-QSH/QuizHub-byETO</a></li>
+            <li>软件版本：<strong>v1.0.3</strong>，最后更新时间：<strong>2025/12/30</strong></li>
+            <li>如有问题，可以提交 <a href="https://github.com/ETO-QSH/QuizHub-byETO/issues" target="_blank" rel="noopener">issue</a>，或者直接线下单杀喵</li>
+            <li>如果需要更多题库支持，请<strong>自行拓展</strong>（我就考这两科呐）</li>
+            <li>请遵循<strong>GPLv3</strong>协议，完全开源，非商业化，保留署名和协议</li>
+            <li>账号和密码仅用于用户做题数据储存，丢失<strong>无法找回</strong></li>
+            <li><a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/%E6%AF%9B%E6%A6%82%20-%20%E8%AF%BE%E7%A8%8B%E7%9F%A5%E8%AF%86%E7%82%B9%E4%B8%8E%E8%AF%95%E9%A2%98%E5%BA%932025.docx" target="_blank" rel="noopener">毛概题库</a>来着学习通，<a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/%E6%96%B0-%E9%A9%AC%E5%8E%9F%E5%AE%A2%E8%A7%82%E9%A2%98%E9%A2%98%E5%BA%93%E4%BA%8C.pdf" target="_blank" rel="noopener">马原题库</a>来自于我们老师</li>
+            <li>所有解析均由<a href="https://github.com/ETO-QSH/QuizHub-byETO/blob/main/gen_exp.py" target="_blank" rel="noopener"> AI </a>生成，无法保证准确性（答案取自题库）</li>
+            <li>由于可预见性的使用人数将超过我的承载能力，所以：</li>
+            <li><strong>强烈建议您将项目本地部署！！！</strong><a href="/static/QuickStart.html" target="_blank" rel="noopener">『三十秒教程』</a></li>
+            <li>点击这个 <a href="https://github.com/ETO-QSH/QuizHub-byETO/releases" target="_blank" rel="noopener">链接</a> 下载最新软件（可以直接找别人要一份）</li>
+            <li>希望这个项目能帮助到你，我要先去想办法不挂了喵呜 ~</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function(){
+      document.addEventListener('DOMContentLoaded', function(){
+        var m = document.getElementById('announceModal');
+        if(!m) return;
+        var modal = new bootstrap.Modal(m, {});
+        modal.show();
+      });
+    })();
+  </script>
+</body>
+</html>
