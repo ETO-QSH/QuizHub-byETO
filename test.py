@@ -43,7 +43,7 @@ def migrate_last_choice(last_choice: dict, delete: int, then_shift_from: int, sh
 
 def process_file(path):
     print(f'Processing {path} ...')
-    with path.open(encoding='utf-8') as f:
+    with open(path, encoding='utf-8') as f:
         data = json.load(f)
 
     if 'mayuan' not in data:
@@ -120,7 +120,7 @@ def process_file(path):
             part['list'] = [k for k in part['list'] if k is not None]
 
     # 写回原文件（如需另存，把 path 换成新名字即可）
-    with path.open('w', encoding='utf-8') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     print('  done')
 
