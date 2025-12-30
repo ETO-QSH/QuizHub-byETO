@@ -10,17 +10,13 @@ import re
 
 if getattr(sys, 'frozen', False):
     RES_BASE = Path(sys._MEIPASS)
+    APP_DIR = Path(sys.executable).parent
 else:
-    RES_BASE = Path(__file__).parent
+    RES_BASE = APP_DIR = Path(__file__).parent
 
 APP = Flask(__name__, static_folder=str(RES_BASE / "static"), template_folder=str(RES_BASE / "templates"))
 APP.secret_key = "change-me-to-a-secure-random-key"
 USERNAME_RE = re.compile(r'^[A-Za-z0-9]+$')
-
-if getattr(sys, 'frozen', False):
-    APP_DIR = Path(sys.executable).parent
-else:
-    APP_DIR = Path(__file__).parent
 
 USERS_FILE = APP_DIR / "users.json"
 USER_DATA_DIR = APP_DIR / "user_data"
@@ -684,7 +680,7 @@ def api_user_data():
 
 
 if __name__ == "__main__":
-    port = 5000
+    port = 5001
     host = "0.0.0.0"
 
     if len(sys.argv) > 1:

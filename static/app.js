@@ -301,6 +301,7 @@ async function loadQuestion(){
 
     // 只要启用了解析就展示（tag 模式也可显示解析）
     if(explainMode && q.explanation){
+      document.getElementById('feedback').innerText = ('正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
       insertExplanation(q.explanation);
     }
   }
