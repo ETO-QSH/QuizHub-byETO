@@ -1,3 +1,4 @@
+import os
 import re
 import json
 
@@ -126,4 +127,10 @@ def process_file(path):
 
 
 if __name__ == '__main__':
-    process_file(r"user_data/ETO.json")
+    user_data_dir = r"user_data"
+    for name in os.listdir(user_data_dir):
+        path = os.path.join(user_data_dir, name)
+        if not os.path.isfile(path):
+            continue
+        process_file(path)
+        
