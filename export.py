@@ -1,6 +1,9 @@
 import os
+import sys
 import time
 import shutil
+
+from pathlib import Path
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -53,10 +56,12 @@ def save_questions_to_word(questions, first_name, second_name, user):
 
         document.add_paragraph()
 
-    shutil.rmtree(f"export/{user}", ignore_errors=True)
-    os.makedirs(f"export/{user}", exist_ok=True)
+    APP_DIR = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
+    export_dir = APP_DIR / "export" / user
+    shutil.rmtree(export_dir, ignore_errors=True)
+    export_dir.mkdir(parents=True, exist_ok=True)
     save_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
     docx_name = f'{first_name} - {second_name} - {save_time}.docx'
-    docx_path = os.path.join(f"export/{user}", docx_name)
+    docx_path = os.path.join(export_dir, docx_name)
     document.save(docx_path)
     return docx_name, docx_path
