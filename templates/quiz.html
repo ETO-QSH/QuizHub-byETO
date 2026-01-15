@@ -48,7 +48,10 @@
       <div class="col-lg-4">
         <div class="card shadow-sm">
           <div class="card-body">
-            <h6>题目列表</h6>
+            <div class="d-flex justify-content-between align-items-center">
+              <h5>题目列表</h5>
+              <button id="exportBtn" class="btn btn-primary btn-sm">导出文档</button>
+            </div>
             <div id="list" class="uid-grid"></div>
           </div>
         </div>
@@ -58,106 +61,8 @@
 
   <script src="/static/app.js"></script>
   <script>
-let currentList = [];
-let currentPos = 0;
-let revealMode = false;
-let showExplanations = false;
-
-async function loadFlags() {
-  const res = await fetch('/api/flags');
-  if (res.ok) {
-    const f = await res.json();
-    revealMode = !!f.reveal_mode;
-    showExplanations = !!f.show_explanations;
-  }
-}
-
-async function displayQuestion(index) {
-  if (index >= currentList.length) {
-    alert("题目已完成");
-    return;
-  }
-  
-  currentPos = index;
-  const uid = currentList[index];
-  const course = "{{ course }}";
-  
-  const revealParam = revealMode ? 1 : 0;
-  const res = await fetch(`/api/question?uid=${uid}&reveal=${revealParam}&course=${course}`);
-  
-  if (!res.ok) {
-    alert("题目加载失败");
-    return;
-  }
-  
-  const q = await res.json();
-  
-  let html = `<h4>${q.question}</h4>`;
-  html += `<div class="options">`;
-  
-  for (const [key, val] of Object.entries(q.options || {})) {
-    html += `<button onclick="submitAnswer('${uid}', '${key}')">${key}. ${val}</button>`;
-  }
-  
-  html += `</div>`;
-  
-  if (revealMode) {
-    html += `<div class="answer-reveal"><strong>答案：${q.answer}</strong></div>`;
-    if (showExplanations && q.explanation) {
-      html += `<div class="explanation"><strong>解析：</strong>${q.explanation}</div>`;
-    }
-  }
-  
-  document.getElementById("quiz-content").innerHTML = html;
-}
-
-async function submitAnswer(uid, selected) {
-  const course = "{{ course }}";
-  const res = await fetch('/api/answer', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uid, selected, course })
-  });
-  
-  if (!res.ok) return;
-  
-  const result = await res.json();
-  const correct = result.correct;
-  const answer = result.answer;
-  
-  let feedback = `<strong>${correct ? '✓ 正确' : '✗ 错误'}</strong><br>`;
-  feedback += `答案：${answer}`;
-  
-  if (!revealMode && showExplanations) {
-    const qRes = await fetch(`/api/question?uid=${uid}&reveal=1&course=${course}`);
-    if (qRes.ok) {
-      const q = await qRes.json();
-      if (q.explanation) {
-        feedback += `<br><strong>解析：</strong>${q.explanation}`;
-      }
-    }
-  }
-  
-  const explanationDiv = document.querySelector(".explanation");
-  if (explanationDiv) {
-    explanationDiv.style.display = showExplanations ? "block" : "none";
-  }
-  
-  alert(feedback);
-  nextQuestion();
-}
-
-function nextQuestion() {
-  if (currentPos + 1 < currentList.length) {
-    displayQuestion(currentPos + 1);
-  } else {
-    alert("本单元题目已完成");
-  }
-}
-
-window.onload = async () => {
-  await loadFlags();
-};
+window.user = "{{ session.user }}";
+window.course = "{{ course }}";
 </script>
 </body>
 </html>

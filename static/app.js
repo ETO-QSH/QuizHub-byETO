@@ -488,9 +488,51 @@ async function savePos(){
   await fetch('/api/progress/save',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key: progressKey, pos:pos})});
 }
 
+async function exportQuestions() {
+  let second_name = "题目列表";
+  if (progressKey) {
+    if (progressKey.includes("sequential:")) {
+      second_name = progressKey.replace("sequential:", "");
+      if (second_name === "all") second_name = "全部题目";
+    } else if (progressKey.startsWith("random:")) {
+      second_name = "随机题目";
+    } else if (progressKey === "wrong") {
+      second_name = "错题";
+    } else if (progressKey === "star") {
+      second_name = "标星题目";
+    } else {
+      second_name = progressKey;
+    }
+  }
+  const res = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qlist, course: window.course, second_name, user: window.user })
+  });
+
+  if (!res.ok) return alert('导出失败');
+  const disposition = res.headers.get('Content-Disposition');
+  const fileNameMatch = disposition && disposition.match(/filename\*?=['"]?(?:UTF-8''|)([^;\r\n"']+)['"]?/i);
+  const docx_name = fileNameMatch ? decodeURIComponent(fileNameMatch[1]) : 'export.docx';
+
+  if (res.ok) {
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.download = docx_name;
+    a.href = url;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  } else {
+    alert('导出失败');
+  }
+}
+
 window.onload = loadProgressList;
 window.addEventListener('resize', ()=>{ adjustGridSize(); });
 window.addEventListener('load', ()=>{ setTimeout(adjustGridSize, 80); });
+
+document.getElementById('exportBtn').onclick = exportQuestions;
 
 function insertExplanation(explanation){
   if(!explanation) return;

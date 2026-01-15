@@ -1,5 +1,7 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
+from flask import Flask, render_template, request, redirect, session, jsonify, send_file, make_response
 from werkzeug.security import check_password_hash, generate_password_hash
+from export import save_questions_to_word
+from urllib.parse import quote
 from pathlib import Path
 import webbrowser
 import random
@@ -679,8 +681,43 @@ def api_user_data():
     return jsonify(ud_all)
 
 
+@APP.route("/api/export", methods=["POST"])
+def api_export():
+    if 'user' not in session:
+        return jsonify({"error": "not logged"}), 401
+    j = get_request_json()
+    qlist = j.get("qlist", [])
+    course = j.get("course")
+    second_name = j.get("second_name", "题目列表")
+    user = j.get("user")
+    if not course or course not in ("maogai", "mayuan"):
+        return jsonify({"error": "invalid course"}), 400
+    if not user:
+        return jsonify({"error": "user required"}), 400
+    QUESTIONS_X, _ = get_dataset(course)
+    exps = EXPS_DS if course == "mayuan" else EXPS_DB
+    questions = []
+    for uid in qlist:
+        q = QUESTIONS_X.get(uid)
+        if not q:
+            continue
+        question_dict = {
+            "uid": uid,
+            "question": q.get("question"),
+            "answer": q.get("answer"),
+            "explain": exps.get(uid, "") if exps else "",
+            "options": q.get("options", {})
+        }
+        questions.append(question_dict)
+    first_name = '毛概' if course == 'maogai' else '马原'
+    docx_name, docx_path = save_questions_to_word(questions, first_name, second_name, user)
+    response = make_response(send_file(docx_path, as_attachment=True, download_name=docx_name))
+    response.headers['Content-Disposition'] = f"attachment; filename*=utf-8''{quote(docx_name)}"
+    return response
+
+
 if __name__ == "__main__":
-    port = 5001
+    port = 5000
     host = "0.0.0.0"
 
     if len(sys.argv) > 1:

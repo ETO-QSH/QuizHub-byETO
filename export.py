@@ -1,5 +1,6 @@
 import os
 import time
+import shutil
 
 from docx import Document
 from docx.oxml.ns import qn
@@ -8,7 +9,7 @@ from docx.enum.dml import MSO_THEME_COLOR
 from docx.enum.text import WD_COLOR_INDEX, WD_ALIGN_PARAGRAPH
 
 
-def save_questions_to_word(questions, first_name, second_name):
+def save_questions_to_word(questions, first_name, second_name, user):
     document = Document()
 
     style = document.styles['Normal']
@@ -52,6 +53,10 @@ def save_questions_to_word(questions, first_name, second_name):
 
         document.add_paragraph()
 
+    shutil.rmtree(f"export/{user}", ignore_errors=True)
+    os.makedirs(f"export/{user}", exist_ok=True)
     save_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
-    docx_path = os.path.abspath(os.path.join(f'{first_name} - {second_name} - {save_time}.docx'))
+    docx_name = f'{first_name} - {second_name} - {save_time}.docx'
+    docx_path = os.path.join(f"export/{user}", docx_name)
     document.save(docx_path)
+    return docx_name, docx_path
