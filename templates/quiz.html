@@ -60,7 +60,6 @@
   <script>
 let currentList = [];
 let currentPos = 0;
-let currentKey = null;
 let revealMode = false;
 let showExplanations = false;
 
@@ -70,15 +69,6 @@ async function loadFlags() {
     const f = await res.json();
     revealMode = !!f.reveal_mode;
     showExplanations = !!f.show_explanations;
-  }
-}
-
-async function startPractice(mode, options = {}) {
-  if (mode === 'random' || mode === 'wrong' || mode === 'star') {
-    currentPos = 0;
-    displayQuestion(0);
-  } else {
-    displayQuestion(currentPos);
   }
 }
 

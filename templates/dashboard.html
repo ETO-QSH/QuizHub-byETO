@@ -113,16 +113,6 @@ async function clearUnit(u){
   if(r.ok){ alert('已清除本单元做题记录'); } else { alert('清除失败'); }
 }
 
-async function startSequential(unit){
-  const course = "{{ course }}";
-  await fetch('/api/start', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({mode: 'sequential', unit: unit, reveal: false, course: course})
-  });
-  location = '/quiz';
-}
-
 window.onload = loadFlags;
 </script>
 </body>
