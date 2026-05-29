@@ -1,0 +1,10 @@
+export/
+user_data/
+QuickStart/
+/__pycache__
+.vscode/
+.idea/
+build/
+dist/
+users.json
+*.md
