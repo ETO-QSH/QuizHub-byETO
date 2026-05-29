@@ -1,5 +1,0 @@
-total_questions: 1055
-answered: 813
-missing_answers: 0
-red_answers_total: 866
-red_answers_consumed: 734
