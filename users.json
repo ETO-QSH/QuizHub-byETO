@@ -1,0 +1,16 @@
+{
+  "users": {
+    "3123": {
+      "password": "scrypt:32768:8:1$nKrtlOeaMykNGlC5$2efb1341cd70518bd83541a4dc64d4a45ddc9aaa3d1bc492cffe4539891aeabf7a1f1f4bea7ac0139dd01defede75ad6661b8de8de2e5d4f2c33ee4f3e3b9906",
+      "uid": 1
+    },
+    "312321": {
+      "password": "scrypt:32768:8:1$Uh4rjvN0t4A4NYSH$dba2faa9742a8b720c8a96bc42b124c94fda585b0faaf6b3c8c5ef50bfc2356efdf872cb4da4f57c1cd87adf272c0ae16bb17b4eb3440eff05f7ce90dd7fc04b",
+      "uid": 2
+    }
+  },
+  "order": [
+    "3123",
+    "312321"
+  ]
+}

@@ -183,6 +183,7 @@ async function loadQuestion(){
   const uid = qlist[pos];
   let q = await fetch('/api/question?uid='+encodeURIComponent(uid) + (revealMode ? '&reveal=1' : '')).then(r=>r.json());
   currentQuestion = q;
+  const hasOptions = q.options && Object.keys(q.options).length > 0;
   document.getElementById('qtitle').innerText = (pos+1)+'. '+ q.question;
   const opts = document.getElementById('opts'); opts.innerHTML = '';
   document.getElementById('feedback').innerText = '';
@@ -215,7 +216,13 @@ async function loadQuestion(){
   // 若处于 tag 模式且题目在 tagAvailable，则不禁用（即使 ud_cache 有历史也允许作答）
   const shouldDisable = revealMode || (!!last && !(isTagMode && tagAvailable && tagAvailable.has(uid)));
 
-  if(q.type === '判断题'){
+  if(!hasOptions){
+    const tip = document.createElement('div');
+    tip.className = 'text-muted';
+    tip.innerText = '（无选项题）';
+    opts.appendChild(tip);
+    if(submitBtn) submitBtn.style.display = 'none';
+  } else if(q.type === '判断题'){
     for(const k of Object.keys(q.options)){
       const b = document.createElement('button');
       b.className = 'option-btn';
@@ -251,54 +258,61 @@ async function loadQuestion(){
 
   // 显示答案与解析
   if(q.answer !== undefined && q.answer !== null){
-    const optsArr = document.querySelectorAll('#opts .option-btn');
-    optsArr.forEach(btn=>{
-      const txt = btn.innerText.trim();
-      const key = txt.split(/[.\s]/)[0];
-      btn.classList.remove('correct','wrong','selected');
-      
-      if(revealMode){
-        if(Array.isArray(q.answer)){
-          if(q.answer.includes(key)) btn.classList.add('correct');
-          else btn.classList.add('wrong');
-        } else {
-          if(q.answer === key) btn.classList.add('correct');
-          else btn.classList.add('wrong');
+    if(!hasOptions){
+      document.getElementById('feedback').innerText = '参考答案: ' + (Array.isArray(q.answer) ? q.answer.join('') : q.answer);
+      if(explainMode && q.explanation){
+        insertExplanation(q.explanation);
+      }
+    } else {
+      const optsArr = document.querySelectorAll('#opts .option-btn');
+      optsArr.forEach(btn=>{
+        const txt = btn.innerText.trim();
+        const key = txt.split(/[.\s]/)[0];
+        btn.classList.remove('correct','wrong','selected');
+        
+        if(revealMode){
+          if(Array.isArray(q.answer)){
+            if(q.answer.includes(key)) btn.classList.add('correct');
+            else btn.classList.add('wrong');
+          } else {
+            if(q.answer === key) btn.classList.add('correct');
+            else btn.classList.add('wrong');
+          }
+        } else if(last){
+          if(Array.isArray(last.selected) && last.selected.includes(key)) btn.classList.add('selected');
+          if(Array.isArray(q.answer)){
+            if(q.answer.includes(key)) btn.classList.add('correct');
+            if(Array.isArray(last.selected) && last.selected.includes(key) && !q.answer.includes(key)) btn.classList.add('wrong');
+          } else {
+            if(q.answer === key) btn.classList.add('correct');
+            if(last.selected === key && last.selected !== q.answer) btn.classList.add('wrong');
+          }
+          if(q.type === '多选题' && Array.isArray(last.selected)){
+            multiSelected.clear();
+            last.selected.forEach(k=>multiSelected.add(k));
+          }
         }
-      } else if(last){
-        if(Array.isArray(last.selected) && last.selected.includes(key)) btn.classList.add('selected');
-        if(Array.isArray(q.answer)){
-          if(q.answer.includes(key)) btn.classList.add('correct');
-          if(Array.isArray(last.selected) && last.selected.includes(key) && !q.answer.includes(key)) btn.classList.add('wrong');
-        } else {
-          if(q.answer === key) btn.classList.add('correct');
-          if(last.selected === key && last.selected !== q.answer) btn.classList.add('wrong');
-        }
-        if(q.type === '多选题' && Array.isArray(last.selected)){
-          multiSelected.clear();
-          last.selected.forEach(k=>multiSelected.add(k));
+      });
+
+      // 列表方块：统一更新（tag 模式也更新）
+      const square = document.getElementById('li-'+pos);
+      if(square && (revealMode || last)){
+        square.classList.remove('green','red');
+        if(last){
+          if(last.correct) square.classList.add('green'); else square.classList.add('red');
         }
       }
-    });
 
-    // 列表方块：统一更新（tag 模式也更新）
-    const square = document.getElementById('li-'+pos);
-    if(square && (revealMode || last)){
-      square.classList.remove('green','red');
-      if(last){
-        if(last.correct) square.classList.add('green'); else square.classList.add('red');
+      // 统一显示反馈（tag 模式也可显示解析）
+      if(!revealMode && last){
+        document.getElementById('feedback').innerText = last.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
       }
-    }
 
-    // 统一显示反馈（tag 模式也可显示解析）
-    if(!revealMode && last){
-      document.getElementById('feedback').innerText = last.correct ? '✓ 回答正确' : ('✗ 回答错误，正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
-    }
-
-    // 只要启用了解析就展示（tag 模式也可显示解析）
-    if(explainMode && q.explanation){
-      document.getElementById('feedback').innerText = ('正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
-      insertExplanation(q.explanation);
+      // 只要启用了解析就展示（tag 模式也可显示解析）
+      if(explainMode && q.explanation){
+        document.getElementById('feedback').innerText = ('正确答案: ' + (Array.isArray(q.answer) ? JSON.stringify(q.answer) : q.answer));
+        insertExplanation(q.explanation);
+      }
     }
   }
 
