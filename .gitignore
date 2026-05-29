@@ -1,9 +1,10 @@
 export/
 user_data/
 QuickStart/
-/__pycache__
+__pycache__/
 .vscode/
 .idea/
+.venv/
 build/
 dist/
 users.json
