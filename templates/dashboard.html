@@ -22,7 +22,7 @@
       <div class="col-md-8">
         <div class="card mb-3 shadow-sm">
           <div class="card-body">
-            <h5 class="mb-3">题库：{{ '毛概' if course=='maogai' else '马原' }}</h5>
+            <h5 class="mb-3">{{ course_name }}</h5>
             <div class="list-group">
               {% for u in units %}
                 <div class="list-group-item unit-item">

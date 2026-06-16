@@ -19,6 +19,7 @@ else:
 APP = Flask(__name__, static_folder=str(RES_BASE / "static"), template_folder=str(RES_BASE / "templates"))
 APP.secret_key = "change-me-to-a-secure-random-key"
 USERNAME_RE = re.compile(r'^[A-Za-z0-9]+$')
+COURSE_LIST = ("maogai", "mayuan", "xigai")
 RES_BASE = RES_BASE / "src"
 login_path = "login.html"
 
@@ -38,6 +39,10 @@ with DB_FILE.open(encoding='utf-8') as f:
 SECOND_DB_FILE = RES_BASE / "mayuan" / "dataset.json"
 with SECOND_DB_FILE.open(encoding='utf-8') as f:
     db2 = json.load(f)
+
+THIRD_DB_FILE = RES_BASE / "xigai" / "xigai.json"
+with THIRD_DB_FILE.open(encoding='utf-8') as f:
+    db3 = json.load(f)
 
 QUESTIONS = {}
 UNIT_LIST = {}
@@ -96,6 +101,19 @@ for kind, groups in db2.items():
                 uids.append(uid)
             UNIT_LIST2.setdefault(unit_name, []).extend(uids)
 
+QUESTIONS3 = {}
+UNIT_LIST3 = {}
+for unit, types in db3.items():
+    for tname, qlist in types.items():
+        for q in qlist:
+            uid = q.get('uid')
+            if not uid:
+                continue
+            q['unit'] = unit
+            q['type'] = tname
+            QUESTIONS3[uid] = q
+            UNIT_LIST3.setdefault(unit, []).append(uid)
+
 EXP_DB = RES_BASE / "maogai" / "exp_db.json"
 if EXP_DB.exists():
     with EXP_DB.open(encoding='utf-8') as f:
@@ -105,6 +123,12 @@ EXP_DS = RES_BASE / "mayuan" / "exp_ds.json"
 if EXP_DS.exists():
     with EXP_DS.open(encoding='utf-8') as f:
         EXPS_DS = json.load(f)
+
+EXP_XG = RES_BASE / "xigai" / "exp_xigai.json"
+EXPS_XG = None
+if EXP_XG.exists():
+    with EXP_XG.open(encoding='utf-8') as f:
+        EXPS_XG = json.load(f)
 
 
 def reload_users():
@@ -168,7 +192,7 @@ def migrate_old_user_data(old):
 
 def normalize_progress_keys_in_user_data(data):
     changed = False
-    for course in ("maogai", "mayuan"):
+    for course in COURSE_LIST:
         sec = data.get(course)
         if not isinstance(sec, dict):
             continue
@@ -181,7 +205,7 @@ def normalize_progress_keys_in_user_data(data):
                 prefix, rest = key.split(':', 1)
                 if prefix == 'random':
                     new_key = f"random:{rest}"
-                elif prefix in ("maogai", "mayuan", "sequential", "tag"):
+                elif prefix in COURSE_LIST + ("sequential", "tag"):
                     new_key = rest
                 else:
                     continue
@@ -195,7 +219,7 @@ def normalize_progress_keys_in_user_data(data):
         cpk = sec.get("current_progress_key")
         if isinstance(cpk, str) and ':' in cpk:
             prefix, rest = cpk.split(':', 1)
-            if prefix in ("maogai", "mayuan", "sequential", "tag"):
+            if prefix in COURSE_LIST + ("sequential", "tag"):
                 sec["current_progress_key"] = rest
                 changed = True
         sec["progress"] = prog
@@ -216,14 +240,15 @@ def load_user_data(username):
     p = USER_DATA_DIR / f"{username}.json"
     if p.exists():
         data = json.load(p.open(encoding='utf-8'))
-        if isinstance(data, dict) and ("maogai" in data or "mayuan" in data):
+        if isinstance(data, dict) and any(k in data for k in COURSE_LIST):
             data.setdefault("maogai", default_ud_section())
             data.setdefault("mayuan", default_ud_section())
+            data.setdefault("xigai", default_ud_section())
             if normalize_progress_keys_in_user_data(data):
                 save_user_data(username, data)
             return data
 
-        new = {"maogai": default_ud_section(), "mayuan": default_ud_section()}
+        new = {"maogai": default_ud_section(), "mayuan": default_ud_section(), "xigai": default_ud_section()}
         if isinstance(data, dict):
             new["maogai"].update(data)
 
@@ -231,7 +256,7 @@ def load_user_data(username):
         save_user_data(username, new)
         return new
 
-    data = {"maogai": default_ud_section(), "mayuan": default_ud_section()}
+    data = {"maogai": default_ud_section(), "mayuan": default_ud_section(), "xigai": default_ud_section()}
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return data
 
@@ -267,7 +292,7 @@ def login():
     if request.method == "POST":
         u = request.form.get("username", "").strip()
         pw = request.form.get("password", "")
-        course = request.form.get("course", "maogai") or "maogai"
+        course = request.form.get("course", "xigai") or "xigai"
 
         if not u or not pw:
             return render_template(login_path, error="用户名或密码不能为空")
@@ -314,7 +339,7 @@ def register():
     USERS_DATA.setdefault("order", []).append(u)
     save_users()
     session['user'] = u
-    session['course'] = request.form.get("course") or "maogai"
+    session['course'] = request.form.get("course") or "xigai"
     return jsonify({"ok": True, "uid": next_uid})
 
 
@@ -328,9 +353,9 @@ def logout():
 def dashboard():
     if 'user' not in session:
         return redirect("/login")
-    course = session.get('course', 'maogai')
-    if course not in ("maogai", "mayuan"):
-        course = 'maogai'
+    course = session.get('course', 'xigai')
+    if course not in COURSE_LIST:
+        course = 'xigai'
     return redirect(f"/dashboard/{course}")
 
 
@@ -338,18 +363,28 @@ def dashboard():
 def dashboard_course(course):
     if 'user' not in session:
         return redirect("/login")
-    if course not in ("maogai", "mayuan"):
+    if course not in COURSE_LIST:
         return redirect("/dashboard/maogai")
     session['course'] = course
     QUESTIONS_X, UNIT_LIST_X = get_dataset(course)
     user_info = USERS_DATA.get("users", {}).get(session['user'])
     units = list(UNIT_LIST_X.keys())
-    return render_template("dashboard.html", units=units, user_info=user_info, course=course)
+    return render_template("dashboard.html", units=units, user_info=user_info, course=course, course_name=get_course_name(course))
+
+
+def get_course_name(course):
+    if course == "mayuan":
+        return "马原"
+    if course == "xigai":
+        return "习概"
+    return "毛概"
 
 
 def get_dataset(course):
     if course == "mayuan" and QUESTIONS2:
         return QUESTIONS2, UNIT_LIST2
+    if course == "xigai" and QUESTIONS3:
+        return QUESTIONS3, UNIT_LIST3
     return QUESTIONS, UNIT_LIST
 
 
@@ -384,8 +419,8 @@ def api_start():
 
     tag = j.get("tag")
     username = session['user']
-    course = j.get("course") or session.get('course') or "maogai"
-    if course not in ("maogai", "mayuan"):
+    course = j.get("course") or session.get('course') or "xigai"
+    if course not in COURSE_LIST:
         return jsonify({"error": "invalid course"}), 400
 
     session['course'] = course
@@ -454,8 +489,8 @@ def api_start():
 def quiz_root():
     if 'user' not in session:
         return redirect("/login")
-    course = session.get('course', 'maogai')
-    if course not in ("maogai", "mayuan"):
+    course = session.get('course', 'xigai')
+    if course not in COURSE_LIST:
         return redirect(f"/login")
     return redirect(f"/quiz/{course}")
 
@@ -464,7 +499,7 @@ def quiz_root():
 def quiz_page(course):
     if 'user' not in session:
         return redirect("/login")
-    if course not in ("maogai", "mayuan"):
+    if course not in COURSE_LIST:
         return redirect("/dashboard/maogai")
 
     session['course'] = course
@@ -497,7 +532,7 @@ def api_question():
     uid = request.args.get("uid")
     reveal = request.args.get("reveal") == "1"
     course = request.args.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "course required"}), 400
 
     QUESTIONS_X, _ = get_dataset(course)
@@ -508,7 +543,7 @@ def api_question():
 
     if reveal:
         out["answer"] = q.get("answer")
-    exps = EXPS_DS if course == "mayuan" else EXPS_DB
+    exps = EXPS_DS if course == "mayuan" else (EXPS_XG if course == "xigai" else EXPS_DB)
     if exps and uid in exps:
         out["explanation"] = exps[uid]
     return jsonify(out)
@@ -523,7 +558,7 @@ def api_answer():
     uid = j.get("uid")
     selected = j.get("selected")
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "course required"}), 400
 
     QUESTIONS_X, _ = get_dataset(course)
@@ -568,7 +603,7 @@ def api_star():
     uid = j.get("uid")
     action = j.get("action", "toggle")
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "course required"}), 400
     username = session['user']
     ud_all, ud = get_user_section(username, course)
@@ -603,7 +638,7 @@ def api_clear_unit():
     j = get_request_json()
     unit_name = j.get("unit") or request.form.get("unit")
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "course required"}), 400
     if not unit_name:
         return jsonify({"error": "no unit"}), 400
@@ -639,7 +674,7 @@ def api_flags():
     username = session['user']
     j = get_request_json()
     course = request.args.get("course") or j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "course required"}), 400
     ud_all, ud = get_user_section(username, course)
     if request.method == "GET":
@@ -661,7 +696,7 @@ def api_progress_save():
     if not key:
         return jsonify({"error": "no progress key provided"}), 400
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "course required"}), 400
     ud_all, ud = get_user_section(username, course)
     ud.setdefault("progress", {}).setdefault(key, {})['pos'] = pos
@@ -677,7 +712,7 @@ def api_user_data():
     course = request.args.get("course") or session.get("course")
     username = session['user']
     ud_all = load_user_data(username)
-    if course and course in ("maogai", "mayuan"):
+    if course and course in COURSE_LIST:
         return jsonify(ud_all.get(course, default_ud_section()))
     return jsonify(ud_all)
 
@@ -691,12 +726,12 @@ def api_export():
     course = j.get("course")
     second_name = j.get("second_name", "题目列表")
     user = j.get("user")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_LIST:
         return jsonify({"error": "invalid course"}), 400
     if not user:
         return jsonify({"error": "user required"}), 400
     QUESTIONS_X, _ = get_dataset(course)
-    exps = EXPS_DS if course == "mayuan" else EXPS_DB
+    exps = EXPS_DS if course == "mayuan" else (EXPS_XG if course == "xigai" else EXPS_DB)
     questions = []
     for uid in qlist:
         q = QUESTIONS_X.get(uid)
@@ -710,7 +745,7 @@ def api_export():
             "options": q.get("options", {})
         }
         questions.append(question_dict)
-    first_name = '毛概' if course == 'maogai' else '马原'
+    first_name = get_course_name(course)
     docx_name, docx_path = save_questions_to_word(questions, first_name, second_name, user)
     response = make_response(send_file(docx_path, as_attachment=True, download_name=docx_name))
     response.headers['Content-Disposition'] = f"attachment; filename*=utf-8''{quote(docx_name)}"
