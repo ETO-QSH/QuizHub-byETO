@@ -1,16 +1,14 @@
 import json
+import time
 import requests
 from pathlib import Path
-import time
 
 DEEPSEEK_API_KEY = "sk-******"
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 
 BASE = Path(__file__).parent
-DB_FILE = BASE / "database.json"
-DS_FILE = BASE / "dataset.json"
-EXP_FILE_DB = BASE / "exp_db.json"
-EXP_FILE_DS = BASE / "exp_ds.json"
+DB_FILE = Path(r"D:\Work Files\QuizHub\src\xigai\database_compatible.json")
+EXP_FILE_DB = Path(r"D:\Work Files\QuizHub\src\xigai\exp_ds.json")
 
 
 def call_deepseek(question, options, answer):
@@ -86,10 +84,10 @@ def gen_exp_db(src_path: Path, out_path: Path, rate_delay: float = 1.0):
                 if exp:
                     explanations[uid] = exp
                     success += 1
-                    print("  ✓ 成功")
+                    print("  ✓ 成功：", success)
                     print(exp)
                 else:
-                    print("  ✗ 失败")
+                    print("  ✗ 失败：", uid)
                 time.sleep(rate_delay)
 
     with out_path.open('w', encoding='utf-8') as f:
@@ -127,10 +125,10 @@ def gen_exp_ds(src_path: Path, out_path: Path, rate_delay: float = 1.0):
                 if exp:
                     explanations[uid] = exp
                     success += 1
-                    print("  ✓ 成功")
+                    print("  ✓ 成功：", success)
                     print(exp)
                 else:
-                    print("  ✗ 失败")
+                    print("  ✗ 失败：", uid)
                 time.sleep(rate_delay)
 
     with out_path.open('w', encoding='utf-8') as f:
@@ -139,4 +137,4 @@ def gen_exp_ds(src_path: Path, out_path: Path, rate_delay: float = 1.0):
 
 
 if __name__ == "__main__":
-    gen_exp_ds(DS_FILE, EXP_FILE_DS)
+    gen_exp_db(DB_FILE, EXP_FILE_DB)

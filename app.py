@@ -39,6 +39,10 @@ SECOND_DB_FILE = RES_BASE / "mayuan" / "dataset.json"
 with SECOND_DB_FILE.open(encoding='utf-8') as f:
     db2 = json.load(f)
 
+THIRD_DB_FILE = RES_BASE / "xigai" / "database_compatible.json"
+with THIRD_DB_FILE.open(encoding='utf-8') as f:
+    db3 = json.load(f)
+
 QUESTIONS = {}
 UNIT_LIST = {}
 for unit, types in db.items():
@@ -96,15 +100,56 @@ for kind, groups in db2.items():
                 uids.append(uid)
             UNIT_LIST2.setdefault(unit_name, []).extend(uids)
 
+QUESTIONS3 = {}
+UNIT_LIST3 = {}
+for unit, types in db3.items():
+    for tname, qlist in types.items():
+        for q in qlist:
+            uid = q.get('uid')
+            if not uid:
+                continue
+            q['unit'] = unit
+            q['type'] = tname
+            QUESTIONS3[uid] = q
+            UNIT_LIST3.setdefault(unit, []).append(uid)
+
 EXP_DB = RES_BASE / "maogai" / "exp_db.json"
 if EXP_DB.exists():
     with EXP_DB.open(encoding='utf-8') as f:
         EXPS_DB = json.load(f)
-        
+
 EXP_DS = RES_BASE / "mayuan" / "exp_ds.json"
 if EXP_DS.exists():
     with EXP_DS.open(encoding='utf-8') as f:
         EXPS_DS = json.load(f)
+
+EXP_XG = RES_BASE / "xigai" / "exp_db.json"
+if EXP_XG.exists():
+    with EXP_XG.open(encoding='utf-8') as f:
+        EXPS_XIGAI = json.load(f)
+
+COURSE_CONFIG = {
+    "maogai": {
+        "questions": QUESTIONS,
+        "units": UNIT_LIST,
+        "exps": EXPS_DB,
+        "name": "毛概"
+    },
+    "mayuan": {
+        "questions": QUESTIONS2,
+        "units": UNIT_LIST2,
+        "exps": EXPS_DS,
+        "name": "马原"
+    },
+    "xigai": {
+        "questions": QUESTIONS3,
+        "units": UNIT_LIST3,
+        "exps": EXPS_XIGAI,
+        "name": "习概"
+    }
+}
+
+DEFAULT_COURSE = "xigai"
 
 
 def reload_users():
@@ -168,7 +213,7 @@ def migrate_old_user_data(old):
 
 def normalize_progress_keys_in_user_data(data):
     changed = False
-    for course in ("maogai", "mayuan"):
+    for course in COURSE_CONFIG:
         sec = data.get(course)
         if not isinstance(sec, dict):
             continue
@@ -181,7 +226,7 @@ def normalize_progress_keys_in_user_data(data):
                 prefix, rest = key.split(':', 1)
                 if prefix == 'random':
                     new_key = f"random:{rest}"
-                elif prefix in ("maogai", "mayuan", "sequential", "tag"):
+                elif prefix in (*COURSE_CONFIG.keys(), "sequential", "tag"):
                     new_key = rest
                 else:
                     continue
@@ -195,7 +240,7 @@ def normalize_progress_keys_in_user_data(data):
         cpk = sec.get("current_progress_key")
         if isinstance(cpk, str) and ':' in cpk:
             prefix, rest = cpk.split(':', 1)
-            if prefix in ("maogai", "mayuan", "sequential", "tag"):
+            if prefix in (*COURSE_CONFIG.keys(), "sequential", "tag"):
                 sec["current_progress_key"] = rest
                 changed = True
         sec["progress"] = prog
@@ -216,14 +261,14 @@ def load_user_data(username):
     p = USER_DATA_DIR / f"{username}.json"
     if p.exists():
         data = json.load(p.open(encoding='utf-8'))
-        if isinstance(data, dict) and ("maogai" in data or "mayuan" in data):
-            data.setdefault("maogai", default_ud_section())
-            data.setdefault("mayuan", default_ud_section())
+        if isinstance(data, dict) and any(c in data for c in COURSE_CONFIG):
+            for course in COURSE_CONFIG:
+                data.setdefault(course, default_ud_section())
             if normalize_progress_keys_in_user_data(data):
                 save_user_data(username, data)
             return data
 
-        new = {"maogai": default_ud_section(), "mayuan": default_ud_section()}
+        new = {course: default_ud_section() for course in COURSE_CONFIG}
         if isinstance(data, dict):
             new["maogai"].update(data)
 
@@ -231,7 +276,7 @@ def load_user_data(username):
         save_user_data(username, new)
         return new
 
-    data = {"maogai": default_ud_section(), "mayuan": default_ud_section()}
+    data = {course: default_ud_section() for course in COURSE_CONFIG}
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return data
 
@@ -248,6 +293,47 @@ def get_user_section(username, course, create=True):
             return ud_all, None
         ud_all[course] = default_ud_section()
     return ud_all, ud_all[course]
+
+
+def get_dataset(course):
+    cfg = COURSE_CONFIG.get(course)
+    if cfg is None:
+        cfg = COURSE_CONFIG[DEFAULT_COURSE]
+    return cfg["questions"], cfg["units"]
+
+
+def get_exps(course):
+    cfg = COURSE_CONFIG.get(course)
+    if cfg is None:
+        cfg = COURSE_CONFIG[DEFAULT_COURSE]
+    return cfg["exps"]
+
+
+def get_course_name(course):
+    cfg = COURSE_CONFIG.get(course)
+    if cfg is None:
+        cfg = COURSE_CONFIG[DEFAULT_COURSE]
+    return cfg["name"]
+
+
+def get_request_json():
+    if request.is_json:
+        try:
+            return request.get_json(silent=True) or {}
+        except Exception:
+            return {}
+    try:
+        text = request.get_data(as_text=True)
+        if text:
+            return json.loads(text)
+    except Exception:
+        pass
+    try:
+        if request.form:
+            return request.form.to_dict()
+    except Exception:
+        pass
+    return {}
 
 
 @APP.context_processor
@@ -328,9 +414,9 @@ def logout():
 def dashboard():
     if 'user' not in session:
         return redirect("/login")
-    course = session.get('course', 'maogai')
-    if course not in ("maogai", "mayuan"):
-        course = 'maogai'
+    course = session.get("course", DEFAULT_COURSE)
+    if course not in COURSE_CONFIG:
+        course = DEFAULT_COURSE
     return redirect(f"/dashboard/{course}")
 
 
@@ -338,39 +424,13 @@ def dashboard():
 def dashboard_course(course):
     if 'user' not in session:
         return redirect("/login")
-    if course not in ("maogai", "mayuan"):
-        return redirect("/dashboard/maogai")
+    if course not in COURSE_CONFIG:
+        return redirect(f"/dashboard/{DEFAULT_COURSE}")
     session['course'] = course
     QUESTIONS_X, UNIT_LIST_X = get_dataset(course)
     user_info = USERS_DATA.get("users", {}).get(session['user'])
     units = list(UNIT_LIST_X.keys())
     return render_template("dashboard.html", units=units, user_info=user_info, course=course)
-
-
-def get_dataset(course):
-    if course == "mayuan" and QUESTIONS2:
-        return QUESTIONS2, UNIT_LIST2
-    return QUESTIONS, UNIT_LIST
-
-
-def get_request_json():
-    if request.is_json:
-        try:
-            return request.get_json(silent=True) or {}
-        except Exception:
-            return {}
-    try:
-        text = request.get_data(as_text=True)
-        if text:
-            return json.loads(text)
-    except Exception:
-        pass
-    try:
-        if request.form:
-            return request.form.to_dict()
-    except Exception:
-        pass
-    return {}
 
 
 @APP.route("/api/start", methods=["POST"])
@@ -385,7 +445,7 @@ def api_start():
     tag = j.get("tag")
     username = session['user']
     course = j.get("course") or session.get('course') or "maogai"
-    if course not in ("maogai", "mayuan"):
+    if course not in COURSE_CONFIG:
         return jsonify({"error": "invalid course"}), 400
 
     session['course'] = course
@@ -455,8 +515,8 @@ def quiz_root():
     if 'user' not in session:
         return redirect("/login")
     course = session.get('course', 'maogai')
-    if course not in ("maogai", "mayuan"):
-        return redirect(f"/login")
+    if course not in COURSE_CONFIG:
+        return redirect("/login")
     return redirect(f"/quiz/{course}")
 
 
@@ -464,8 +524,8 @@ def quiz_root():
 def quiz_page(course):
     if 'user' not in session:
         return redirect("/login")
-    if course not in ("maogai", "mayuan"):
-        return redirect("/dashboard/maogai")
+    if course not in COURSE_CONFIG:
+        return redirect(f"/dashboard/{DEFAULT_COURSE}")
 
     session['course'] = course
     QUESTIONS_X, UNIT_LIST_X = get_dataset(course)
@@ -497,7 +557,7 @@ def api_question():
     uid = request.args.get("uid")
     reveal = request.args.get("reveal") == "1"
     course = request.args.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "course required"}), 400
 
     QUESTIONS_X, _ = get_dataset(course)
@@ -508,7 +568,7 @@ def api_question():
 
     if reveal:
         out["answer"] = q.get("answer")
-    exps = EXPS_DS if course == "mayuan" else EXPS_DB
+    exps = get_exps(course)
     if exps and uid in exps:
         out["explanation"] = exps[uid]
     return jsonify(out)
@@ -523,7 +583,7 @@ def api_answer():
     uid = j.get("uid")
     selected = j.get("selected")
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "course required"}), 400
 
     QUESTIONS_X, _ = get_dataset(course)
@@ -568,7 +628,7 @@ def api_star():
     uid = j.get("uid")
     action = j.get("action", "toggle")
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "course required"}), 400
     username = session['user']
     ud_all, ud = get_user_section(username, course)
@@ -603,7 +663,7 @@ def api_clear_unit():
     j = get_request_json()
     unit_name = j.get("unit") or request.form.get("unit")
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "course required"}), 400
     if not unit_name:
         return jsonify({"error": "no unit"}), 400
@@ -639,7 +699,7 @@ def api_flags():
     username = session['user']
     j = get_request_json()
     course = request.args.get("course") or j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "course required"}), 400
     ud_all, ud = get_user_section(username, course)
     if request.method == "GET":
@@ -661,7 +721,7 @@ def api_progress_save():
     if not key:
         return jsonify({"error": "no progress key provided"}), 400
     course = j.get("course") or session.get("course")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "course required"}), 400
     ud_all, ud = get_user_section(username, course)
     ud.setdefault("progress", {}).setdefault(key, {})['pos'] = pos
@@ -677,7 +737,7 @@ def api_user_data():
     course = request.args.get("course") or session.get("course")
     username = session['user']
     ud_all = load_user_data(username)
-    if course and course in ("maogai", "mayuan"):
+    if course and course in COURSE_CONFIG:
         return jsonify(ud_all.get(course, default_ud_section()))
     return jsonify(ud_all)
 
@@ -691,12 +751,12 @@ def api_export():
     course = j.get("course")
     second_name = j.get("second_name", "题目列表")
     user = j.get("user")
-    if not course or course not in ("maogai", "mayuan"):
+    if not course or course not in COURSE_CONFIG:
         return jsonify({"error": "invalid course"}), 400
     if not user:
         return jsonify({"error": "user required"}), 400
     QUESTIONS_X, _ = get_dataset(course)
-    exps = EXPS_DS if course == "mayuan" else EXPS_DB
+    exps = get_exps(course)
     questions = []
     for uid in qlist:
         q = QUESTIONS_X.get(uid)
@@ -710,7 +770,7 @@ def api_export():
             "options": q.get("options", {})
         }
         questions.append(question_dict)
-    first_name = '毛概' if course == 'maogai' else '马原'
+    first_name = get_course_name(course)
     docx_name, docx_path = save_questions_to_word(questions, first_name, second_name, user)
     response = make_response(send_file(docx_path, as_attachment=True, download_name=docx_name))
     response.headers['Content-Disposition'] = f"attachment; filename*=utf-8''{quote(docx_name)}"
@@ -726,7 +786,7 @@ if __name__ == "__main__":
             port = int(sys.argv[1])
         except Exception:
             print(f"无效端口参数 {sys.argv[1]}，使用默认端口 {port}")
-    
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
